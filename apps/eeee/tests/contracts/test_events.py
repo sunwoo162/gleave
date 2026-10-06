@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from threading import Event, Thread
+from time import monotonic, sleep
 
 import pytest
 from pydantic import ValidationError
@@ -59,3 +61,53 @@ def test_unpublished_event_is_immutable_and_rejects_incomplete_project_revision(
         event(2, project_id="p1")
     with pytest.raises(ValidationError):
         event(3, revision="r1")
+
+
+def test_published_event_payload_cannot_be_mutated() -> None:
+    source = {"nested": [{"value": "original"}]}
+    item = EventEnvelope(
+        event_type="execution.updated",
+        execution_id="exe-1",
+        request_id="req-1",
+        payload=source,
+    )
+    published = LocalEventBus().publish(item)
+    source["nested"][0]["value"] = "tampered"
+    with pytest.raises(TypeError):
+        published.payload["nested"][0]["value"] = "tampered again"
+    assert published.model_dump(mode="json", by_alias=True)["payload"] == {
+        "nested": [{"value": "original"}]
+    }
+
+
+def test_concurrent_publish_delivers_callbacks_in_cursor_order() -> None:
+    bus = LocalEventBus()
+    entered_first = Event()
+    release_first = Event()
+    delivered: list[int] = []
+
+    def callback(item: EventEnvelope) -> None:
+        if item.cursor == 1:
+            entered_first.set()
+            assert release_first.wait(timeout=3)
+        delivered.append(item.cursor)
+
+    bus.subscribe(callback)
+    first = Thread(target=lambda: bus.publish(event(1)))
+    second = Thread(target=lambda: bus.publish(event(2)))
+    try:
+        first.start()
+        assert entered_first.wait(timeout=3)
+        second.start()
+        deadline = monotonic() + 3
+        while len(bus.replay()) < 2 and monotonic() < deadline:
+            sleep(0.005)
+        assert len(bus.replay()) == 2
+        assert delivered == []
+    finally:
+        release_first.set()
+        first.join(timeout=3)
+        second.join(timeout=3)
+
+    assert not first.is_alive() and not second.is_alive()
+    assert delivered == [1, 2]

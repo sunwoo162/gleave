@@ -137,3 +137,33 @@ def test_approval_gates_running_and_completed_states() -> None:
             completed_at=NOW + timedelta(seconds=1),
             output={"ok": True},
         )
+
+
+def test_nested_execution_data_cannot_change_after_validation() -> None:
+    source = {"tasks": [{"name": "build", "checks": ["qa"]}]}
+    evidence = ["evidence-1"]
+    item = envelope(input=source, evidence_ids=evidence)
+    source["tasks"][0]["name"] = "tampered"
+    evidence.append("evidence-2")
+
+    with pytest.raises(TypeError):
+        item.input["tasks"][0]["name"] = "tampered again"
+    with pytest.raises((AttributeError, TypeError)):
+        item.input["tasks"].append({"name": "extra"})
+    with pytest.raises((AttributeError, TypeError)):
+        item.evidence_ids.append("evidence-3")
+    assert item.model_dump(mode="json", by_alias=True)["input"] == {
+        "tasks": [{"name": "build", "checks": ["qa"]}]
+    }
+    assert item.model_dump(mode="json", by_alias=True)["evidenceIds"] == ["evidence-1"]
+
+    completed = item.transition(ExecutionStatus.RUNNING, at=NOW + timedelta(seconds=1)).transition(
+        ExecutionStatus.COMPLETED,
+        at=NOW + timedelta(seconds=2),
+        output={"result": {"files": ["todo.py"]}},
+    )
+    with pytest.raises(TypeError):
+        completed.output["result"]["files"][0] = "malicious.py"
+    assert completed.model_dump(mode="json", by_alias=True)["output"] == {
+        "result": {"files": ["todo.py"]}
+    }

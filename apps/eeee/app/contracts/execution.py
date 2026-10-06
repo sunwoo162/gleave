@@ -2,11 +2,37 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from enum import Enum
+from math import isfinite
+from types import MappingProxyType
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
+
+def _freeze_json(value: Any) -> Any:
+    """Copy JSON-shaped data into immutable containers for audit records."""
+    if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise ValueError("JSON object keys must be strings")
+        return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_json(item) for item in value)
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float) and isfinite(value):
+        return value
+    raise ValueError(f"Execution data is not JSON-compatible: {type(value).__name__}")
+
+
+def _thaw_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return value
 
 
 class ExecutionStatus(str, Enum):
@@ -78,13 +104,13 @@ class ExecutionEnvelope(BaseModel):
     tool_id: str = Field(min_length=1, alias="toolId")
     actor: str = Field(min_length=1)
     input_schema_version: str = Field(default="1", min_length=1, alias="inputSchemaVersion")
-    input: dict[str, Any] = Field(default_factory=dict)
+    input: Mapping[str, Any] = Field(default_factory=dict)
     status: ExecutionStatus = ExecutionStatus.QUEUED
-    output: dict[str, Any] | None = None
+    output: Mapping[str, Any] | None = None
     side_effect_level: SideEffectLevel = Field(default=SideEffectLevel.NONE, alias="sideEffectLevel")
     required_approval: bool = Field(default=False, alias="requiredApproval")
     approval_state: ApprovalState = Field(default=ApprovalState.NOT_REQUIRED, alias="approvalState")
-    evidence_ids: list[str] = Field(default_factory=list, alias="evidenceIds")
+    evidence_ids: tuple[str, ...] = Field(default_factory=tuple, alias="evidenceIds")
     claim_latch_receipt_id: str | None = Field(default=None, min_length=1, alias="claimLatchReceiptId")
     qa_report_id: str | None = Field(default=None, min_length=1, alias="qaReportId")
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="startedAt")
@@ -103,7 +129,7 @@ class ExecutionEnvelope(BaseModel):
 
     @field_validator("evidence_ids")
     @classmethod
-    def nonblank_evidence_ids(cls, values: list[str]) -> list[str]:
+    def nonblank_evidence_ids(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         if any(not item.strip() or item != item.strip() for item in values):
             raise ValueError("evidence IDs must be nonblank and unpadded")
         return values
@@ -131,7 +157,14 @@ class ExecutionEnvelope(BaseModel):
         if self.required_approval and self.status in {ExecutionStatus.RUNNING, ExecutionStatus.COMPLETED}:
             if self.approval_state != ApprovalState.APPROVED:
                 raise ValueError("running or completed execution requires approval")
+        object.__setattr__(self, "input", _freeze_json(self.input))
+        if self.output is not None:
+            object.__setattr__(self, "output", _freeze_json(self.output))
         return self
+
+    @field_serializer("input", "output")
+    def serialize_json_data(self, value: Mapping[str, Any] | None) -> Any:
+        return None if value is None else _thaw_json(value)
 
     def transition(
         self,
