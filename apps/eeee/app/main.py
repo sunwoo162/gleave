@@ -14,6 +14,7 @@ from app.api.routes import (
     build_design_router,
     build_desktop_router,
     build_mobile_router,
+    build_project_view_router,
     build_router,
 )
 from app.assistant.registry import build_default_registry
@@ -36,6 +37,7 @@ from app.project_runtime.provisioner import ProjectProvisioner
 from app.project_runtime.connectors import build_default_connectors
 from app.project_runtime.documents import ProjectDocumentService
 from app.project_runtime.evidence import ProjectEvidenceService
+from app.project_view.service import ProjectViewService
 from app.storage.sqlite import SQLiteStore
 from app.trust.gate import TrustGate
 
@@ -157,6 +159,8 @@ def create_app(
     application.state.kernel = kernel
     application.state.execution_store = kernel.executions
     application.state.event_bus = event_bus
+    project_view = ProjectViewService(store)
+    application.state.project_view = project_view
     assistant_service = AssistantService(
         router=capability_router,
         coordinator=coordinator,
@@ -197,6 +201,7 @@ def create_app(
         return {"status": "ok", "claimLatch": trust_gate.health_payload()}
 
     application.include_router(build_router(coordinator))
+    application.include_router(build_project_view_router(project_view))
     application.include_router(build_assistant_router(assistant_service, project_documents))
     application.include_router(build_mobile_router(mobile_bridge, assistant_service, mobile_snapshot))
     application.include_router(build_desktop_router(coordinator, store, mobile_bridge, trust_gate))

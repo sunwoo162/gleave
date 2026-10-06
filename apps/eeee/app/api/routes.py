@@ -22,6 +22,9 @@ from app.mobile.bridge import MobileBridge, MobileBridgeError
 from app.project_runtime.documents import ProjectDocumentService
 from app.project_runtime.evidence import ProjectEvidenceService
 from app.project_runtime.models import ProjectDocumentSyncResult, ProjectEvidenceIngestionResult, ProjectProfile
+from app.project_view.models import ProjectMapEvents, ProjectMapSnapshot
+from app.project_view.service import ProjectViewService
+from app.runtime.store import StaleProjectRevision
 from app.storage.sqlite import SQLiteStore
 from app.trust.gate import TrustGate
 from app.domain.models import (
@@ -32,6 +35,27 @@ from app.domain.models import (
     Run,
 )
 from app.workflow.planner import WorkPlan, build_work_plan
+
+
+def build_project_view_router(service: ProjectViewService) -> APIRouter:
+    router = APIRouter(prefix="/api/projects")
+
+    @router.get("/{project_id}/map", response_model=ProjectMapSnapshot)
+    def project_map(project_id: str, revision: str | None = Query(default=None, min_length=1)):
+        try:
+            return service.get_snapshot(project_id, revision)
+        except StaleProjectRevision as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.get("/{project_id}/map/events", response_model=ProjectMapEvents)
+    def project_map_events(project_id: str, cursor: int = Query(default=0, ge=0),
+                           revision: str | None = Query(default=None, min_length=1)):
+        try:
+            return service.get_events(project_id, cursor=cursor, revision=revision)
+        except StaleProjectRevision as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return router
 
 
 def _normalise_run_timestamp(value: datetime | None) -> str | None:
