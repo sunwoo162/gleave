@@ -4,8 +4,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.contracts.execution import SideEffectLevel
 
-SideEffectLevel = Literal["none", "local", "external"]
+
 ApprovalLevel = Literal["none", "user", "always"]
 SelectionStatus = Literal["selected", "needs_clarification"]
 
@@ -73,4 +74,3 @@ class CapabilitySelection(BaseModel):
     capability_id: str | None = None
     candidates: list[CapabilityCandidate] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)
-
