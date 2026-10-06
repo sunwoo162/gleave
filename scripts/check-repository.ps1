@@ -17,13 +17,18 @@ foreach ($relative in $required) {
     }
 }
 
+$generatedSegments = @(".git", "node_modules", "dist", "__pycache__", ".pytest_cache", ".oss-builder", "var")
 $nestedGit = Get-ChildItem -LiteralPath $root -Directory -Force -Recurse -Filter ".git" |
-    Where-Object { $_.FullName -ne (Join-Path $root ".git") }
+    Where-Object {
+        $relative = $_.FullName.Substring($root.Length).TrimStart('\')
+        $segments = $relative -split '\\'
+        $generated = @($segments | Where-Object { $_ -in $generatedSegments }).Count -gt 0
+        (-not $generated) -and $_.FullName -ne (Join-Path $root ".git")
+    }
 if ($nestedGit) {
     throw "Nested Git directories are not allowed: $($nestedGit.FullName -join ', ')"
 }
 
-$generatedSegments = @(".git", "node_modules", "dist", "__pycache__", ".pytest_cache", ".oss-builder", "var")
 $secretLike = Get-ChildItem -LiteralPath $root -File -Force -Recurse |
     Where-Object {
         $relative = $_.FullName.Substring($root.Length).TrimStart('\')

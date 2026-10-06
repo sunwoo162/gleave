@@ -41,9 +41,44 @@ The imported source revisions and exclusions are recorded in repository-manifest
 
 ## Current status
 
-The aggregate repository baseline is being assembled first. The highest-priority implementation work is:
+The first local vertical slice is implemented. The highest-priority implementation work is now available:
 
 1. ClaimLatch local Adapter.
 2. EEEE persistent memory storage, retrieval, and promotion.
 3. ISEOL independent QA results connected to EEEE memory.
+
+The desktop companion is an always-on-top PySide6 widget with tray hide/restore/quit behavior. EEEE owns the local API, approvals, project memory, and user-facing state; ISEOL owns Agent decomposition, Workstream/team composition, execution, handoffs, integration, QA, and evaluation.
+
+## Local setup
+
+Requirements: Python 3.12+, Node.js 20+, npm, and Windows PowerShell for the helper scripts.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".\apps\eeee[dev,desktop]"
+Push-Location .\packages\iseol; npm ci; Pop-Location
+Push-Location .\integrations\claimlatch-adapter; npm ci; Pop-Location
+```
+
+Start the local EEEE API and widget:
+
+```powershell
+.\scripts\dev-up.ps1
+Push-Location .\apps\eeee
+..\..\.venv\Scripts\python.exe -m app.desktop
+Pop-Location
+```
+
+Run the focused unified verification, or the full EEEE suite:
+
+```powershell
+.\scripts\verify-all.ps1
+.\scripts\verify-all.ps1 -Full
+```
+
+No hosted login or central server is required. Optional Discord, mobile, calendar, and future channel adapters connect to the local core. Never commit `.env`, credentials, runtime databases, `node_modules`, virtual environments, `dist`, or `__pycache__`.
+
+## Upstream attribution
+
+The aggregate preserves the source projects as separate imported components. Their original repositories, licenses, remotes, branches, commits, and excluded runtime files are recorded in [`repository-manifest.json`](repository-manifest.json). The source folders remain preserved outside this checkout as upstream references.
 

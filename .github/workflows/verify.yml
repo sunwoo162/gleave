@@ -1,0 +1,44 @@
+name: Verify unified platform
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  focused:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            packages/iseol/package-lock.json
+            packages/claimlatch/package-lock.json
+            integrations/claimlatch-adapter/package-lock.json
+      - name: Install EEEE dependencies
+        run: python -m pip install -e ".\apps\eeee[dev]"
+      - name: Install TypeScript dependencies
+        run: |
+          npm ci --prefix packages/iseol
+          npm ci --prefix integrations/claimlatch-adapter
+      - name: Check repository hygiene
+        shell: pwsh
+        run: .\scripts\check-repository.ps1
+      - name: Run EEEE focused tests
+        working-directory: apps/eeee
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ..\..\var | Out-Null
+          python -m pytest -q --basetemp ..\..\var\pytest-ci tests\integrations tests\memory tests\coordinator\test_memory_project_flow.py tests\api\test_memory_api.py
+      - name: Build and test ISEOL contracts, QA, and organization
+        shell: pwsh
+        run: |
+          npm run build --silent --prefix packages/iseol
+          node --import tsx --test packages/iseol/tests/integrations/contracts.test.ts packages/iseol/tests/qa/independent-runner.test.ts packages/iseol/tests/agent-organization/team-composer.test.ts packages/iseol/tests/agent-organization/qa-baseline.test.ts
+      - name: Test ClaimLatch adapter
+        run: npm test --silent --prefix integrations/claimlatch-adapter

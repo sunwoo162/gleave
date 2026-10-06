@@ -44,5 +44,5 @@ if (-not $ready) {
 }
 
 Write-Output ("EEEE local API started. pid={0} url=http://127.0.0.1:{1}" -f $process.Id, $Port)
-Write-Output "The PySide6 companion can be started with: python -m app.desktop"
+Write-Output "The PySide6 companion can be started from apps\eeee with: python -m app.desktop"
 Write-Output "Stop it with: Stop-Process -Id $($process.Id)"
