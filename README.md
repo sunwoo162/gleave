@@ -1,39 +1,42 @@
 # EEEE Platform
 
-Local-first personal assistant platform combining:
+One local-first open-source personal assistant platform combining:
 
-- EEEE: the user's personal assistant, project portfolio, approval layer, and persistent memory.
-- ISEOL: the Harness Coordinator that owns Agent organization, task decomposition, execution, integration, QA, and Agent evaluation.
-- ClaimLatch: the evidence-backed reliability gate for factual claims, Agent reports, final reports, and memory candidates.
+- EEEE: the top-level assistant that understands context and chooses the best capability or connector.
+- ISEOL: the project-execution capability that owns Agent organization, task decomposition, execution, integration, QA, and evaluation when the request is a project.
+- ClaimLatch: the global evidence-backed reliability gate for assistant claims, actions, Agent reports, release reports, and memory candidates.
 
-The platform is designed to run on one local computer without a hosted login or central server. Discord, desktop widget, mobile clients, calendar, and other channels are adapters around the local core rather than the core itself.
+The user operates one EEEE application. Project creation produces one unified Project Runtime that binds local workspace, ISEOL, Calendar, Discord, GitHub, Desktop/Mobile surfaces, QA baselines, and project memory under one `projectId`. The platform runs on a local computer without a hosted login or central EEEE server; external services are optional adapters around the local core.
 
 ## Repository layout
 
 ~~~text
-apps/eeee                 Python EEEE application
-packages/iseol            TypeScript ISEOL Agent runtime
-packages/claimlatch       ClaimLatch verification engine
+apps/eeee                 Python EEEE assistant kernel and local application
+packages/iseol            TypeScript ISEOL project-execution runtime
+packages/claimlatch       Bundled ClaimLatch verification engine
 integrations/contracts    Versioned cross-runtime contracts
 integrations/claimlatch   Local ClaimLatch adapter
-docs                      Architecture, plans, and operations
+docs                      Canonical architecture, plans, and operations
 scripts                   Local repository and verification scripts
 ~~~
 
-## Core trust flow
+## Core assistant and trust flow
 
 ~~~text
-EEEE request
-  -> Project Brief
-  -> ISEOL Agent teams
+User request
+  -> EEEE context, memory, and capability selection
+  -> Personal Secretary / Project Runtime / Documents / Communication / Presence
+  -> ISEOL Agent teams when project execution is selected
   -> independent QA and deterministic evidence
-  -> ClaimLatch report verification
-  -> Project Outcome Report
+  -> ClaimLatch action/report verification
+  -> Release Gate for one current project revision
   -> EEEE persistent memory candidate
-  -> approved/scoped memory used by the next project
+  -> approved/scoped memory used by the next request
 ~~~
 
-Code behavior is verified deterministically. Natural-language factual claims and release reports are verified through ClaimLatch. A verification failure never becomes a trusted release or active memory rule.
+Code behavior is verified deterministically. Natural-language claims, external actions, Agent reports, and release reports are verified through ClaimLatch. A verification failure never becomes a trusted side effect, release, or active memory rule.
+
+The platform integration profile is `claimlatch-v0.2.0`. The audit preserves the actual bundled engine version separately from the profile version.
 
 ClaimLatch text verification returns the versioned `VerificationEnvelopeV1`. EEEE stores the request payload hash, report ID, optional receipt ID, policy version, adapter version, ClaimLatch version, project revision, and full envelope in the same local SQLite database as project state and memory. Replaying one subject at the same revision with a different payload or policy metadata is rejected; a stale revision is rejected before the adapter is called when a current-revision resolver is configured.
 
@@ -50,6 +53,8 @@ The first local vertical slice is implemented. The completed P0 path includes:
 1. ClaimLatch local Adapter with versioned envelopes and durable audit records.
 2. EEEE persistent memory storage, retrieval, promotion, and stale-outcome rejection.
 3. ISEOL independent QA planning, executable evidence ledger, stale-revision checks, and release gate.
+
+The approved redesign adds the extensible EEEE capability registry and unified Project Runtime foundation. See [`docs/architecture/eeee-platform.md`](docs/architecture/eeee-platform.md) for the target boundary and [`docs/superpowers/plans/2026-10-06-eeee-personal-assistant-platform-plan.md`](docs/superpowers/plans/2026-10-06-eeee-personal-assistant-platform-plan.md) for the implementation sequence.
 
 The desktop companion is an always-on-top PySide6 widget with tray hide/restore/quit behavior. EEEE owns the local API, approvals, project memory, and user-facing state; ISEOL owns Agent decomposition, Workstream/team composition, execution, handoffs, integration, QA, and evaluation.
 

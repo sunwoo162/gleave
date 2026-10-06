@@ -1,4 +1,16 @@
-# EEEE · ISEOL · ClaimLatch 통합 조직 및 영속 기억 아키텍처
+# EEEE Platform Architecture Index
+
+The canonical architecture is [`docs/architecture/eeee-platform.md`](architecture/eeee-platform.md).
+
+`eeee-platform` is one local-first project. EEEE is the top-level personal assistant, ISEOL is the project-execution capability selected by EEEE, and ClaimLatch plus deterministic QA form the global trust boundary. The user operates one local EEEE application; Calendar, Discord, GitHub, Desktop, and Mobile are connector surfaces around the same Project Runtime.
+
+The detailed design and implementation plan are:
+
+- [`docs/architecture/eeee-platform.md`](architecture/eeee-platform.md)
+- [`docs/superpowers/specs/2026-10-06-eeee-personal-assistant-platform-design.md`](superpowers/specs/2026-10-06-eeee-personal-assistant-platform-design.md)
+- [`docs/superpowers/plans/2026-10-06-eeee-personal-assistant-platform-plan.md`](superpowers/plans/2026-10-06-eeee-personal-assistant-platform-plan.md)
+
+The sections below are retained as the existing EEEE/ISEOL/ClaimLatch execution and memory reference. New code must follow the canonical single-project boundary above.
 
 ## 0. 문서 목적
 
