@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from app.contracts import ApprovalState, EventEnvelope, ExecutionEnvelope, ExecutionStatus, SideEffectLevel
+from app.contracts import ApprovalState, EventEnvelope, ExecutionEnvelope, ExecutionError, ExecutionStatus, SideEffectLevel
 from app.runtime.store import ExecutionStore, PluginRegistrationStore
 from app.storage.sqlite import SQLiteStore
 
@@ -102,6 +102,121 @@ def test_stale_revision_cannot_write_envelope_or_event(tmp_path) -> None:
         executions.append_event(_event())
     assert [item.execution_id for item in executions.list_for_project("project-1")] == ["execution-1"]
     assert executions.replay_events(project_id="project-1") == []
+
+
+@pytest.mark.parametrize("status", [ExecutionStatus.FAILED, ExecutionStatus.BLOCKED, ExecutionStatus.CANCELLED])
+def test_existing_stale_execution_can_record_only_failure_and_matching_event(tmp_path, status):
+    store = _store(tmp_path)
+    executions = ExecutionStore(store)
+    running = _envelope().transition(ExecutionStatus.RUNNING)
+    executions.save(running)
+    store.update_project_revision("project-1", "rev-2")
+    error = ExecutionError(code="stale_project_revision", message="stale project revision: rev-1")
+    failed = running.transition(status, output={"status": "blocked", "message": error.message}, error=error)
+
+    executions.save(failed)
+    event = EventEnvelope(
+        event_type=f"execution.{status.value}", execution_id=failed.execution_id,
+        request_id=failed.request_id, project_id=failed.project_id, project_revision=failed.project_revision,
+        payload={"status": status.value, "toolId": failed.tool_id, "parentExecutionId": None},
+    )
+    saved = executions.append_event(event)
+    assert ExecutionStore(SQLiteStore(store.path)).get(failed.execution_id) == failed
+    assert executions.replay_events(project_id="project-1") == [saved]
+    with pytest.raises(ValueError, match="stale"):
+        executions.append_event(EventEnvelope.model_validate({**event.model_dump(), "event_type": "execution.completed"}))
+    with pytest.raises(ValueError, match="stale"):
+        executions.save(ExecutionEnvelope.model_validate({**failed.model_dump(), "execution_id": "new-stale"}))
+
+
+@pytest.mark.parametrize("changes", [
+    {"evidence_ids": ("evidence-1", "unverified-evidence")},
+    {"claim_latch_receipt_id": "new-receipt"},
+    {"qa_report_id": "new-qa"},
+    {"input": {"request": "changed"}},
+    {"side_effect_level": SideEffectLevel.EXTERNAL},
+    {"output": {"status": "ready", "trust": {"decision": "PASS"}}},
+    {"error": ExecutionError(code="other_failure", message="not a stale failure")},
+])
+def test_stale_failure_cannot_enrich_audit_or_smuggle_success(tmp_path, changes):
+    store = _store(tmp_path)
+    executions = ExecutionStore(store)
+    running = _envelope().transition(ExecutionStatus.RUNNING)
+    executions.save(running)
+    store.update_project_revision("project-1", "rev-2")
+    failed = running.transition(
+        ExecutionStatus.FAILED, error=ExecutionError(code="stale_project_revision", message="stale revision"),
+    )
+    altered = ExecutionEnvelope.model_validate({**failed.model_dump(), **changes})
+    with pytest.raises(ValueError):
+        executions.save(altered)
+    assert executions.get(running.execution_id) == running
+
+
+def test_stale_completed_output_is_rejected_even_for_existing_execution(tmp_path):
+    store = _store(tmp_path)
+    executions = ExecutionStore(store)
+    running = _envelope().transition(ExecutionStatus.RUNNING)
+    executions.save(running)
+    store.update_project_revision("project-1", "rev-2")
+    with pytest.raises(ValueError, match="stale"):
+        executions.save(running.transition(ExecutionStatus.COMPLETED, output={"trust": {"decision": "PASS"}}))
+    assert executions.get(running.execution_id) == running
+
+
+def test_record_commits_execution_and_lifecycle_event_together(tmp_path):
+    executions = ExecutionStore(_store(tmp_path))
+    queued = _envelope()
+    executions.save(queued)
+    running = queued.transition(ExecutionStatus.RUNNING)
+    event = executions.record(running, _event())
+    assert executions.get(running.execution_id) == running
+    assert event.cursor == 1
+    assert executions.replay_events() == [event]
+
+
+def test_record_rolls_back_state_update_when_event_identity_is_wrong(tmp_path):
+    executions = ExecutionStore(_store(tmp_path))
+    queued = _envelope()
+    executions.save(queued)
+    invalid = EventEnvelope.model_validate({**_event().model_dump(), "request_id": "wrong-request"})
+    with pytest.raises(ValueError, match="identity"):
+        executions.record(queued.transition(ExecutionStatus.RUNNING), invalid)
+    assert executions.get(queued.execution_id) == queued
+    assert executions.replay_events() == []
+
+
+def test_record_rejects_an_event_for_another_existing_execution(tmp_path):
+    executions = ExecutionStore(_store(tmp_path))
+    queued = _envelope()
+    executions.save(queued)
+    executions.save(_envelope(execution_id="execution-2"))
+    with pytest.raises(ValueError, match="identity"):
+        executions.record(queued.transition(ExecutionStatus.RUNNING), _event(execution_id="execution-2"))
+    assert executions.get(queued.execution_id) == queued
+    assert executions.replay_events() == []
+
+
+def test_record_supports_existing_stale_failure_but_not_stale_completion(tmp_path):
+    store = _store(tmp_path)
+    executions = ExecutionStore(store)
+    running = _envelope().transition(ExecutionStatus.RUNNING)
+    executions.save(running)
+    store.update_project_revision("project-1", "rev-2")
+    failed = running.transition(
+        ExecutionStatus.FAILED, error=ExecutionError(code="stale_project_revision", message="stale revision"),
+    )
+    failure_event = EventEnvelope.model_validate({
+        **_event().model_dump(), "event_type": "execution.failed",
+        "payload": {"status": "failed", "toolId": "iseol", "parentExecutionId": None},
+    })
+    with pytest.raises(ValueError, match="stale"):
+        executions.record(running.transition(ExecutionStatus.COMPLETED, output={"status": "ready"}), _event())
+    assert executions.get(running.execution_id) == running
+    assert executions.replay_events() == []
+    recorded = executions.record(failed, failure_event)
+    assert executions.get(failed.execution_id) == failed
+    assert executions.replay_events() == [recorded]
 
 
 def test_missing_project_and_identity_change_are_rejected(tmp_path) -> None:

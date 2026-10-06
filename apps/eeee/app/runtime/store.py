@@ -19,6 +19,10 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class StaleProjectRevision(ValueError):
+    """A project changed after this execution's identity was fixed."""
+
+
 def _current_project_revision(
     connection: sqlite3.Connection, project_id: str | None, revision: str | None
 ) -> None:
@@ -28,7 +32,31 @@ def _current_project_revision(
     if row is None:
         raise KeyError(f"Project not found: {project_id}")
     if row["revision"] != revision:
-        raise ValueError(f"stale project revision for {project_id}: {revision}")
+        raise StaleProjectRevision(f"stale project revision for {project_id}: {revision}")
+
+
+def _is_stale_failure(envelope: ExecutionEnvelope) -> bool:
+    if envelope.status not in {ExecutionStatus.FAILED, ExecutionStatus.BLOCKED, ExecutionStatus.CANCELLED}:
+        return False
+    if envelope.error is None or envelope.error.code != "stale_project_revision":
+        return False
+    # Stale finalization is a failure observation, never an execution result.
+    return envelope.output is None or dict(envelope.output) == {
+        "status": "blocked", "message": envelope.error.message,
+    }
+
+
+def _preserves_stale_audit(previous: ExecutionEnvelope, current: ExecutionEnvelope) -> bool:
+    return all(getattr(previous, field) == getattr(current, field) for field in (
+        "evidence_ids", "claim_latch_receipt_id", "qa_report_id", "approval_state",
+    ))
+
+
+def _ensure_event_identity(execution: ExecutionEnvelope, event: EventEnvelope) -> None:
+    if any(getattr(execution, field) != getattr(event, field) for field in (
+        "execution_id", "request_id", "project_id", "project_revision",
+    )):
+        raise ValueError("event and execution identity mismatch")
 
 
 def _ensure_execution_update(previous: ExecutionEnvelope, current: ExecutionEnvelope) -> None:
@@ -73,33 +101,49 @@ class ExecutionStore:
     def save(self, envelope: ExecutionEnvelope) -> ExecutionEnvelope:
         with self.store._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            _current_project_revision(connection, envelope.project_id, envelope.project_revision)
-            row = connection.execute(
-                "SELECT envelope_json, created_at FROM execution_envelopes WHERE execution_id = ?",
-                (envelope.execution_id,),
-            ).fetchone()
-            if row is not None:
-                previous = ExecutionEnvelope.model_validate_json(row["envelope_json"])
-                _ensure_execution_update(previous, envelope)
-            timestamp = _now()
-            connection.execute(
-                "INSERT INTO execution_envelopes "
-                "(execution_id, request_id, project_id, project_revision, capability_id, tool_id, "
-                "status, envelope_json, started_at, completed_at, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(execution_id) DO UPDATE SET "
-                "status = excluded.status, envelope_json = excluded.envelope_json, "
-                "completed_at = excluded.completed_at, updated_at = excluded.updated_at",
-                (
-                    envelope.execution_id, envelope.request_id, envelope.project_id,
-                    envelope.project_revision, envelope.capability_id, envelope.tool_id,
-                    envelope.status.value, envelope.model_dump_json(by_alias=True),
-                    envelope.started_at.isoformat(),
-                    envelope.completed_at.isoformat() if envelope.completed_at else None,
-                    row["created_at"] if row is not None else timestamp, timestamp,
-                ),
-            )
+            self._save(connection, envelope)
         return envelope
+
+    def record(self, envelope: ExecutionEnvelope, event: EventEnvelope) -> EventEnvelope:
+        """Commit a state transition and its durable event in one transaction."""
+        with self.store._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            _ensure_event_identity(envelope, event)
+            self._save(connection, envelope)
+            return self._append_event(connection, event)
+
+    @staticmethod
+    def _save(connection: sqlite3.Connection, envelope: ExecutionEnvelope) -> None:
+        row = connection.execute(
+            "SELECT envelope_json, created_at FROM execution_envelopes WHERE execution_id = ?",
+            (envelope.execution_id,),
+        ).fetchone()
+        previous = ExecutionEnvelope.model_validate_json(row["envelope_json"]) if row is not None else None
+        try:
+            _current_project_revision(connection, envelope.project_id, envelope.project_revision)
+        except StaleProjectRevision:
+            if previous is None or not _is_stale_failure(envelope) or not _preserves_stale_audit(previous, envelope):
+                raise
+        if previous is not None:
+            _ensure_execution_update(previous, envelope)
+        timestamp = _now()
+        connection.execute(
+            "INSERT INTO execution_envelopes "
+            "(execution_id, request_id, project_id, project_revision, capability_id, tool_id, "
+            "status, envelope_json, started_at, completed_at, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(execution_id) DO UPDATE SET "
+            "status = excluded.status, envelope_json = excluded.envelope_json, "
+            "completed_at = excluded.completed_at, updated_at = excluded.updated_at",
+            (
+                envelope.execution_id, envelope.request_id, envelope.project_id,
+                envelope.project_revision, envelope.capability_id, envelope.tool_id,
+                envelope.status.value, envelope.model_dump_json(by_alias=True),
+                envelope.started_at.isoformat(),
+                envelope.completed_at.isoformat() if envelope.completed_at else None,
+                row["created_at"] if row is not None else timestamp, timestamp,
+            ),
+        )
 
     def get(self, execution_id: str) -> ExecutionEnvelope:
         with self.store._connect() as connection:
@@ -125,34 +169,43 @@ class ExecutionStore:
     def append_event(self, event: EventEnvelope) -> EventEnvelope:
         with self.store._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            return self._append_event(connection, event)
+
+    @staticmethod
+    def _append_event(connection: sqlite3.Connection, event: EventEnvelope) -> EventEnvelope:
+        execution = connection.execute(
+            "SELECT request_id, project_id, project_revision, envelope_json FROM execution_envelopes "
+            "WHERE execution_id = ?", (event.execution_id,),
+        ).fetchone()
+        stored = ExecutionEnvelope.model_validate_json(execution["envelope_json"]) if execution else None
+        try:
             _current_project_revision(connection, event.project_id, event.project_revision)
-            execution = connection.execute(
-                "SELECT request_id, project_id, project_revision FROM execution_envelopes "
-                "WHERE execution_id = ?", (event.execution_id,),
-            ).fetchone()
-            if execution is None:
-                raise KeyError(f"Execution not found: {event.execution_id}")
-            if (
-                execution["request_id"] != event.request_id
-                or execution["project_id"] != event.project_id
-                or execution["project_revision"] != event.project_revision
-            ):
-                raise ValueError("event and execution identity mismatch")
-            cursor = connection.execute(
-                "INSERT INTO execution_events "
-                "(execution_id, request_id, project_id, project_revision, event_type, event_json, published_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    event.execution_id, event.request_id, event.project_id,
-                    event.project_revision, event.event_type, event.model_dump_json(by_alias=True),
-                    event.published_at.isoformat(),
-                ),
-            ).lastrowid
-            published = EventEnvelope.model_validate({**event.model_dump(), "cursor": cursor})
-            connection.execute(
-                "UPDATE execution_events SET event_json = ? WHERE cursor = ?",
-                (published.model_dump_json(by_alias=True), cursor),
-            )
+        except StaleProjectRevision:
+            if (stored is None or not _is_stale_failure(stored)
+                or event.event_type != f"execution.{stored.status.value}"
+                or dict(event.payload) != {
+                    "status": stored.status.value, "toolId": stored.tool_id,
+                    "parentExecutionId": stored.input.get("parentExecutionId"),
+                }):
+                raise
+        if stored is None:
+            raise KeyError(f"Execution not found: {event.execution_id}")
+        _ensure_event_identity(stored, event)
+        cursor = connection.execute(
+            "INSERT INTO execution_events "
+            "(execution_id, request_id, project_id, project_revision, event_type, event_json, published_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                event.execution_id, event.request_id, event.project_id,
+                event.project_revision, event.event_type, event.model_dump_json(by_alias=True),
+                event.published_at.isoformat(),
+            ),
+        ).lastrowid
+        published = EventEnvelope.model_validate({**event.model_dump(), "cursor": cursor})
+        connection.execute(
+            "UPDATE execution_events SET event_json = ? WHERE cursor = ?",
+            (published.model_dump_json(by_alias=True), cursor),
+        )
         return published
 
     def replay_events(

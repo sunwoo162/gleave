@@ -7,6 +7,7 @@ from app.config import Settings
 from app.coordinator.service import Coordinator
 from app.project_runtime.provisioner import ProjectProvisioner
 from app.storage.sqlite import SQLiteStore
+from app.runtime.store import ExecutionStore
 
 
 def test_assistant_service_creates_one_project_runtime_for_project_intent(tmp_path) -> None:
@@ -30,6 +31,9 @@ def test_assistant_service_creates_one_project_runtime_for_project_intent(tmp_pa
     assert Path(result.project_profile.workspace).is_dir()
     assert result.project_profile.project_id == result.project_id
     assert result.status == "awaiting_configuration"
+    assert service.kernel is not None
+    records = ExecutionStore(store).list_for_project(result.project_id)
+    assert any(record.tool_id == "iseol" for record in records)
 
 
 def test_assistant_service_does_not_create_project_for_a_reminder(tmp_path) -> None:
@@ -51,4 +55,3 @@ def test_assistant_service_does_not_create_project_for_a_reminder(tmp_path) -> N
     assert result.project_id is None
     assert result.project_profile is None
     assert result.status == "selected"
-

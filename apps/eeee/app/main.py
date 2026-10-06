@@ -20,6 +20,7 @@ from app.assistant.registry import build_default_registry
 from app.assistant.router import CapabilityRouter
 from app.assistant.service import AssistantService
 from app.config import Settings
+from app.contracts import LocalEventBus
 from app.coordinator.service import Coordinator
 from app.design.references import DesignService
 from app.domain.errors import ApprovalError
@@ -27,6 +28,7 @@ from app.execution.runner import WorkspaceCommandRunner
 from app.execution.verifier import WorkspaceVerifier
 from app.integrations.claimlatch_client import ClaimLatchClient
 from app.integrations.notion_client import NotionClient
+from app.kernel.service import KernelService
 from app.mobile.bridge import MobileBridge
 from app.oss.github_client import GitHubClient
 from app.oss.researcher import GitHubResearcher
@@ -145,6 +147,16 @@ def create_app(
         event_publisher=mobile_bridge.publish,
     )
     application.state.api_flow = api_flow
+    event_bus = LocalEventBus()
+    kernel = KernelService(
+        router=capability_router, coordinator=coordinator, store=store,
+        settings=app_settings, provisioner=project_provisioner, memory=coordinator.memory,
+        trust_gate=trust_gate, event_bus=event_bus, event_publisher=mobile_bridge.publish,
+        document_service=project_documents,
+    )
+    application.state.kernel = kernel
+    application.state.execution_store = kernel.executions
+    application.state.event_bus = event_bus
     assistant_service = AssistantService(
         router=capability_router,
         coordinator=coordinator,
@@ -153,6 +165,7 @@ def create_app(
         provisioner=project_provisioner,
         event_publisher=mobile_bridge.publish,
         document_service=project_documents,
+        kernel=kernel,
     )
     application.state.assistant_service = assistant_service
     design_service = DesignService(store=store)

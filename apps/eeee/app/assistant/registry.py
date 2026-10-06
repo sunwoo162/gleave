@@ -32,6 +32,11 @@ class CapabilityRegistry:
         except KeyError as exc:
             raise KeyError(f"Unknown capability: {capability_id}") from exc
 
+    def bind(self, capability_id: str, handler: Any) -> None:
+        """Attach a runtime implementation while retaining the registered policy."""
+        registered = self.resolve(capability_id)
+        self._capabilities[capability_id] = RegisteredCapability(registered.descriptor, handler)
+
 
 def _descriptor(
     capability_id: str,
@@ -66,9 +71,6 @@ def build_default_registry() -> CapabilityRegistry:
             "Personal Secretary",
             ["schedule", "reminder", "routine"],
             ["일정", "달력", "캘린더", "약속", "회의", "리마인더", "calendar", "schedule", "remind"],
-            required_connectors=["google-calendar"],
-            side_effect_level="external",
-            approval_level="user",
         ),
         None,
     )
@@ -78,9 +80,7 @@ def build_default_registry() -> CapabilityRegistry:
             "Project Execution",
             ["project", "development", "build"],
             ["프로젝트", "앱", "서비스", "기능", "개발", "만들어", "구현", "project", "app", "build", "develop"],
-            required_connectors=["notion", "github", "google-calendar", "desktop", "mobile-bridge"],
-            side_effect_level="external",
-            approval_level="user",
+            side_effect_level="local",
             memory_writable=True,
         ),
         None,
@@ -101,10 +101,8 @@ def build_default_registry() -> CapabilityRegistry:
             "Presence",
             ["desktop", "mobile", "notification"],
             ["바탕화면", "위젯", "휴대폰", "모바일", "desktop", "widget", "mobile", "phone"],
-            required_connectors=["desktop", "mobile-bridge"],
             side_effect_level="local",
         ),
         None,
     )
     return registry
-

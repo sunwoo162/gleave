@@ -79,5 +79,10 @@ def _normalize(value: str) -> str:
 
 
 def _contains(normalized_text: str, phrase: str) -> bool:
-    return _normalize(phrase) in normalized_text
-
+    normalized_phrase = _normalize(phrase)
+    if not normalized_phrase:
+        return False
+    if normalized_phrase.isascii():
+        # English triggers are words, not substrings ("app" is not "happy").
+        return re.search(r"(?<![a-z0-9_])" + re.escape(normalized_phrase) + r"(?![a-z0-9_])", normalized_text) is not None
+    return normalized_phrase in normalized_text

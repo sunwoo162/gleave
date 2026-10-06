@@ -53,3 +53,14 @@ def test_default_registry_contains_the_initial_eeee_capabilities() -> None:
         "presence",
     }
 
+
+def test_registry_can_bind_a_runtime_handler_without_changing_descriptor() -> None:
+    registry = CapabilityRegistry()
+    metadata = descriptor()
+    registry.register(metadata, None)
+    handler = object()
+
+    registry.bind("example", handler)
+
+    assert registry.resolve("example").handler is handler
+    assert registry.resolve("example").descriptor is metadata
