@@ -286,6 +286,28 @@ class SQLiteStore:
                     revision TEXT NOT NULL, status TEXT NOT NULL, summary TEXT NOT NULL,
                     checks_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS execution_envelopes (
+                    execution_id TEXT PRIMARY KEY, request_id TEXT NOT NULL,
+                    project_id TEXT, project_revision TEXT, capability_id TEXT NOT NULL,
+                    tool_id TEXT NOT NULL, status TEXT NOT NULL, envelope_json TEXT NOT NULL,
+                    started_at TEXT NOT NULL, completed_at TEXT,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS execution_events (
+                    cursor INTEGER PRIMARY KEY AUTOINCREMENT, execution_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL, project_id TEXT, project_revision TEXT,
+                    event_type TEXT NOT NULL, event_json TEXT NOT NULL, published_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS plugin_registrations (
+                    plugin_id TEXT PRIMARY KEY, manifest_version TEXT NOT NULL,
+                    status TEXT NOT NULL, manifest_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, removed_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS plugin_audit_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, plugin_id TEXT NOT NULL,
+                    action TEXT NOT NULL, status TEXT NOT NULL, manifest_version TEXT NOT NULL,
+                    event_json TEXT NOT NULL, occurred_at TEXT NOT NULL
+                );
                 """
             )
             run_columns = {
@@ -298,6 +320,22 @@ class SQLiteStore:
             connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_request_id ON runs (request_id)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_status ON runs (status)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs (created_at)")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_execution_envelopes_project_revision "
+                "ON execution_envelopes (project_id, project_revision, started_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_execution_events_project_cursor "
+                "ON execution_events (project_id, project_revision, cursor)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_plugin_registrations_status "
+                "ON plugin_registrations (status, removed_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_plugin_audit_events_plugin "
+                "ON plugin_audit_events (plugin_id, id)"
+            )
         # EEEE memory intentionally shares the durable state database so a
         # restart cannot separate project state from the evidence-backed memory.
         MemoryStore(self.path).init()
