@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "eeee://contracts/project-brief/v1",
+  "title": "ProjectBriefV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "projectId", "requestId", "userGoal", "scope", "constraints", "preferences", "schedule", "retrievedMemoryIds", "qaBaselineIds", "createdAt"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "projectId": {"type": "string", "minLength": 1},
+    "requestId": {"type": "string", "minLength": 1},
+    "userGoal": {"type": "string", "minLength": 1},
+    "scope": {"type": "array", "items": {"type": "string"}},
+    "constraints": {"type": "array", "items": {"type": "string"}},
+    "preferences": {"type": "object"},
+    "schedule": {"type": "object"},
+    "retrievedMemoryIds": {"type": "array", "items": {"type": "string"}},
+    "qaBaselineIds": {"type": "array", "items": {"type": "string"}},
+    "createdAt": {"type": "string", "format": "date-time"}
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "eeee://contracts/verification-envelope/v1",
+  "title": "VerificationEnvelopeV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "subjectId", "projectId", "projectRevision", "subjectType", "claims", "evidence", "deterministicChecks", "decision", "claimLatchReportId", "receiptId", "createdAt"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "subjectId": {"type": "string", "minLength": 1},
+    "projectId": {"type": "string", "minLength": 1},
+    "projectRevision": {"type": "string", "minLength": 1},
+    "subjectType": {"type": "string", "minLength": 1},
+    "claims": {"type": "array", "items": {"type": "object"}},
+    "evidence": {"type": "array", "items": {"type": "object"}},
+    "deterministicChecks": {"type": "array", "items": {"type": "object"}},
+    "decision": {"enum": ["PASS", "WARN", "BLOCK"]},
+    "claimLatchReportId": {"type": "string", "minLength": 1},
+    "receiptId": {"type": ["string", "null"]},
+    "createdAt": {"type": "string", "format": "date-time"}
+  }
+}
