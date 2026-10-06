@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from app.contracts import EventEnvelope, ExecutionEnvelope, ExecutionStatus
+from app.contracts import ApprovalState, EventEnvelope, ExecutionEnvelope, ExecutionStatus, SideEffectLevel
 from app.runtime.store import ExecutionStore, PluginRegistrationStore
 from app.storage.sqlite import SQLiteStore
 
@@ -131,6 +131,62 @@ def test_terminal_execution_cannot_be_rewritten_as_another_result(tmp_path) -> N
     with pytest.raises(ValueError, match="terminal|completed"):
         executions.save(forged)
     assert executions.get("execution-1") == completed
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"required_approval": False, "approval_state": ApprovalState.NOT_REQUIRED},
+        {"side_effect_level": SideEffectLevel.NONE},
+    ],
+)
+def test_saved_approval_policy_cannot_be_weakened(tmp_path, changes: dict[str, object]) -> None:
+    executions = ExecutionStore(_store(tmp_path))
+    original = _envelope(
+        required_approval=True,
+        approval_state=ApprovalState.AWAITING_APPROVAL,
+        side_effect_level=SideEffectLevel.EXTERNAL,
+    )
+    executions.save(original)
+    weakened = ExecutionEnvelope.model_validate({**original.model_dump(), **changes})
+
+    with pytest.raises(ValueError, match="identity|policy"):
+        executions.save(weakened)
+    assert executions.get("execution-1") == original
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"evidence_ids": ()},
+        {"evidence_ids": ("different-evidence",)},
+        {"claim_latch_receipt_id": None},
+        {"claim_latch_receipt_id": "other-claim"},
+        {"qa_report_id": None},
+        {"qa_report_id": "other-qa"},
+    ],
+)
+def test_saved_audit_references_cannot_disappear_or_change(tmp_path, changes: dict[str, object]) -> None:
+    executions = ExecutionStore(_store(tmp_path))
+    original = _envelope()
+    executions.save(original)
+    changed = ExecutionEnvelope.model_validate({**original.model_dump(), **changes})
+
+    with pytest.raises(ValueError, match="audit|evidence|receipt|report"):
+        executions.save(changed)
+    assert executions.get("execution-1") == original
+
+
+def test_new_evidence_may_be_appended_without_replacing_previous_refs(tmp_path) -> None:
+    executions = ExecutionStore(_store(tmp_path))
+    original = _envelope()
+    executions.save(original)
+    enriched = ExecutionEnvelope.model_validate(
+        {**original.model_dump(), "evidence_ids": ("evidence-1", "evidence-2")}
+    )
+
+    executions.save(enriched)
+    assert executions.get("execution-1").evidence_ids == ("evidence-1", "evidence-2")
 
 
 def test_events_receive_durable_ordered_cursors_and_replay_by_project_revision(tmp_path) -> None:

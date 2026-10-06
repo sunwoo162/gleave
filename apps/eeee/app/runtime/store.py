@@ -34,10 +34,18 @@ def _current_project_revision(
 def _ensure_execution_update(previous: ExecutionEnvelope, current: ExecutionEnvelope) -> None:
     identity = (
         "request_id", "project_id", "project_revision", "capability_id", "tool_id", "actor",
-        "input_schema_version", "input", "started_at",
+        "input_schema_version", "input", "started_at", "side_effect_level", "required_approval",
     )
     if any(getattr(previous, field) != getattr(current, field) for field in identity):
-        raise ValueError("execution identity and original input cannot change")
+        raise ValueError("execution identity, input, and approval policy cannot change")
+    if current.evidence_ids[: len(previous.evidence_ids)] != previous.evidence_ids:
+        raise ValueError("recorded audit evidence cannot be removed or replaced")
+    if previous.claim_latch_receipt_id is not None and (
+        current.claim_latch_receipt_id != previous.claim_latch_receipt_id
+    ):
+        raise ValueError("recorded ClaimLatch receipt cannot be removed or replaced")
+    if previous.qa_report_id is not None and current.qa_report_id != previous.qa_report_id:
+        raise ValueError("recorded QA report cannot be removed or replaced")
     if previous.status in {
         ExecutionStatus.COMPLETED, ExecutionStatus.BLOCKED,
         ExecutionStatus.FAILED, ExecutionStatus.CANCELLED,
