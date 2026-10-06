@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
-from threading import Condition, Lock, get_ident
+from threading import Lock
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
@@ -45,32 +45,30 @@ class EventEnvelope(BaseModel):
 
 
 class LocalEventBus:
-    """Small in-memory event log with isolated synchronous observers."""
+    """Order observer delivery by cursor; concurrent publish returns after enqueue."""
 
     def __init__(self) -> None:
-        self._condition = Condition(Lock())
+        self._lock = Lock()
         self._events: list[EventEnvelope] = []
         self._subscribers: dict[int, Callable[[EventEnvelope], None]] = {}
         self._subscriber_errors: list[tuple[int, str, str]] = []
         self._next_subscriber_id = 1
         self._pending: deque[tuple[EventEnvelope, tuple[tuple[int, Callable[[EventEnvelope], None]], ...]]] = deque()
         self._dispatching = False
-        self._dispatcher_thread_id: int | None = None
-        self._delivered_cursor = 0
 
     @property
     def subscriber_errors(self) -> list[tuple[int, str, str]]:
-        with self._condition:
+        with self._lock:
             return list(self._subscriber_errors)
 
     def subscribe(self, callback: Callable[[EventEnvelope], None]) -> Callable[[], None]:
-        with self._condition:
+        with self._lock:
             subscriber_id = self._next_subscriber_id
             self._next_subscriber_id += 1
             self._subscribers[subscriber_id] = callback
 
         def unsubscribe() -> None:
-            with self._condition:
+            with self._lock:
                 self._subscribers.pop(subscriber_id, None)
 
         return unsubscribe
@@ -78,31 +76,24 @@ class LocalEventBus:
     def publish(self, event: EventEnvelope) -> EventEnvelope:
         if event.cursor is not None:
             raise ValueError("event cursor is assigned by the bus")
-        with self._condition:
+        with self._lock:
             published = EventEnvelope.model_validate({**event.model_dump(), "cursor": len(self._events) + 1})
             self._events.append(published)
             subscribers = tuple(self._subscribers.items())
             self._pending.append((published, subscribers))
-            if not self._dispatching:
-                self._dispatching = True
-                self._dispatcher_thread_id = get_ident()
-            elif self._dispatcher_thread_id == get_ident():
-                # A callback may publish again; the active dispatcher drains it next.
+            if self._dispatching:
+                # Publish accepts the event immediately. The active dispatcher
+                # delivers it after all callbacks for the preceding cursor.
                 return published
-            else:
-                while self._delivered_cursor < published.cursor:
-                    self._condition.wait()
-                return published
+            self._dispatching = True
         self._drain_notifications()
         return published
 
     def _drain_notifications(self) -> None:
         while True:
-            with self._condition:
+            with self._lock:
                 if not self._pending:
                     self._dispatching = False
-                    self._dispatcher_thread_id = None
-                    self._condition.notify_all()
                     return
                 published, subscribers = self._pending.popleft()
             for subscriber_id, callback in subscribers:
@@ -110,11 +101,8 @@ class LocalEventBus:
                     callback(published)
                 except Exception as exc:
                     # Observers cannot prevent another observer or replay; failures remain visible.
-                    with self._condition:
+                    with self._lock:
                         self._subscriber_errors.append((subscriber_id, type(exc).__name__, str(exc)))
-            with self._condition:
-                self._delivered_cursor = published.cursor
-                self._condition.notify_all()
 
     def replay(
         self,
@@ -128,7 +116,7 @@ class LocalEventBus:
             raise ValueError("cursor must be nonnegative and limit must be positive")
         if project_revision is not None and project_id is None:
             raise ValueError("revision filter requires project ID")
-        with self._condition:
+        with self._lock:
             events = [
                 event for event in self._events
                 if event.cursor > after_cursor

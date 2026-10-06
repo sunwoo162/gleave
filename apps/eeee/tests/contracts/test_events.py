@@ -111,3 +111,29 @@ def test_concurrent_publish_delivers_callbacks_in_cursor_order() -> None:
 
     assert not first.is_alive() and not second.is_alive()
     assert delivered == [1, 2]
+
+
+def test_callback_can_wait_for_another_thread_to_publish_without_deadlock() -> None:
+    bus = LocalEventBus()
+    delivered: list[int] = []
+
+    def callback(item: EventEnvelope) -> None:
+        if item.cursor == 1:
+            worker_finished = Event()
+
+            def publish_from_worker() -> None:
+                bus.publish(event(2))
+                worker_finished.set()
+
+            worker = Thread(target=publish_from_worker, daemon=True)
+            worker.start()
+            if not worker_finished.wait(timeout=1):
+                raise TimeoutError("worker publish waited for the active callback")
+            worker.join(timeout=1)
+        delivered.append(item.cursor)
+
+    bus.subscribe(callback)
+    bus.publish(event(1))
+
+    assert delivered == [1, 2]
+    assert bus.subscriber_errors == []
