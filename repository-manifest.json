@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "aggregateRepository": {
+    "name": "eeee-platform",
+    "path": "C:/Users/user/Documents/eeee-platform",
+    "purpose": "Local-first EEEE personal assistant with ISEOL Agent orchestration and ClaimLatch verification"
+  },
+  "sources": [
+    {
+      "name": "eeee",
+      "sourcePath": "C:/Users/user/Documents/EEEE",
+      "destination": "apps/eeee",
+      "remote": "https://github.com/sunwoo162/EEEE.git",
+      "branch": "main",
+      "commit": "c987aa75ba34624b08e50803cb207d9e58448e67"
+    },
+    {
+      "name": "iseol",
+      "sourcePath": "C:/Users/user/Documents/discord-project-automation-bot-v3",
+      "destination": "packages/iseol",
+      "remote": "https://github.com/sunwoo162/iseol-bot.git",
+      "branch": "main",
+      "commit": "0282be5ad8be4976a65ba6fd2b4957ec415dfa52"
+    },
+    {
+      "name": "claimlatch",
+      "sourcePath": "C:/Users/user/Documents/claimlatch-v0.2.0",
+      "destination": "packages/claimlatch",
+      "remote": "https://github.com/sunwoo162/claimlatch.git",
+      "branch": "main",
+      "commit": "aee39db1a511bf6fd4fc1b1c319a761ccb7aa604",
+      "packageVersion": "0.3.86"
+    }
+  ],
+  "excludedPatterns": [
+    "**/.git",
+    "**/.env",
+    "**/.env.*",
+    "**/node_modules",
+    "**/dist",
+    "**/.venv",
+    "**/tmp",
+    "**/data",
+    "**/workspaces",
+    "**/*.log",
+    "**/*.sqlite",
+    "**/*.db"
+  ]
+}
+

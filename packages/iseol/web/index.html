@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Iseol Control Plane</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-mark">I</div>
+        <div>
+          <p class="eyebrow">ISEOL CONTROL PLANE</p>
+          <h1>Build, inspect, and continue.</h1>
+        </div>
+      </div>
+      <div class="token-control">
+        <label for="web-token">Web token (this tab only)</label>
+        <div class="token-row">
+          <input id="web-token" type="password" autocomplete="off" placeholder="Optional on loopback" />
+          <button id="save-token" class="secondary-button" type="button">Save</button>
+        </div>
+        <label for="operator-token">Operator token (this tab only)</label>
+        <div class="token-row">
+          <input id="operator-token" type="password" autocomplete="off" placeholder="Required for Run retry" />
+          <button id="save-operator-token" class="secondary-button" type="button">Save</button>
+        </div>
+      </div>
+    </header>
+
+    <nav class="mode-tabs" aria-label="Iseol Web modes">
+      <button class="mode-tab active" data-mode="idea-lab" aria-selected="true" type="button">
+        <span>01</span> Idea Lab
+      </button>
+      <button class="mode-tab" data-mode="project-workspace" aria-selected="false" type="button">
+        <span>02</span> Project Workspace
+      </button>
+      <button class="mode-tab" data-mode="evaluation" aria-selected="false" type="button">
+        <span>03</span> Evaluation
+      </button>
+    </nav>
+
+    <main>
+      <section id="idea-lab-view" class="mode-view">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">EXPLORE BEFORE COMMITTING</p>
+            <h2>Idea Lab</h2>
+            <p>서로 다른 웹 제품을 직접 열어보고, 살아남은 하나만 정식 프로젝트로 승격합니다.</p>
+          </div>
+          <button id="refresh-ideas" class="ghost-button" type="button">Refresh</button>
+        </div>
+        <section class="campaign-create-panel" aria-label="Create Idea Lab campaign">
+          <div>
+            <p class="eyebrow">CAMPAIGN CONTROL</p>
+            <strong>Create Campaign</strong>
+          </div>
+          <input id="campaign-seed" type="text" maxlength="500" placeholder="What kind of products should Iseol explore?" />
+          <input id="campaign-target" type="number" min="1" max="20" value="3" aria-label="Ready candidate target" />
+          <button id="create-campaign" class="secondary-button" type="button">Create Campaign</button>
+          <button id="make-more" class="ghost-button" type="button">Make More</button>
+        </section>
+        <section class="idea-progress-section">
+          <div class="panel-title"><span>Campaign progress</span><small>Durable production state</small></div>
+          <div id="campaign-list" class="campaign-list" aria-live="polite"></div>
+          <div id="production-grid" class="production-grid" aria-live="polite"></div>
+          <section id="campaign-detail" class="panel" hidden aria-live="polite">
+            <div class="panel-title"><span>Campaign detail</span><button id="close-campaign-detail" class="ghost-button" type="button">Back</button></div>
+            <div id="campaign-detail-content"></div>
+          </section>
+        </section>
+        <div class="metric-strip">
+          <div><strong id="prototype-count">0</strong><span>prototypes</span></div>
+          <div><strong id="promoted-count">0</strong><span>promoted</span></div>
+          <div><strong id="candidate-count">0</strong><span>candidates</span></div>
+        </div>
+        <div id="prototype-grid" class="prototype-grid" aria-live="polite"></div>
+        <section id="prototype-detail" class="panel" hidden aria-live="polite">
+          <div class="panel-title"><span>Prototype detail</span><button id="close-prototype-detail" class="ghost-button" type="button">Back</button></div>
+          <div id="prototype-detail-content"></div>
+        </section>
+      </section>
+
+      <section id="project-workspace-view" class="mode-view" hidden>
+        <div class="section-heading workspace-heading">
+          <div>
+            <p class="eyebrow">CANONICAL PROJECT STATE</p>
+            <h2>Project Workspace</h2>
+            <p>승격 이후의 개발 구조와 Genesis부터 현재 Run까지 같은 기록에서 추적합니다.</p>
+          </div>
+          <div class="workspace-picker">
+            <label for="project-select">Project</label>
+            <select id="project-select">
+              <option value="">Select a project</option>
+            </select>
+            <button id="refresh-project" class="ghost-button" type="button">Refresh</button>
+          </div>
+        </div>
+
+        <p id="project-list-status" role="status" aria-live="polite"></p>
+        <div id="project-empty" class="empty-state">
+          <strong>No project selected.</strong>
+          <span>Idea Lab에서 후보를 승격하거나 위에서 프로젝트를 선택하세요.</span>
+        </div>
+
+        <div id="project-content" hidden>
+          <section class="project-hero">
+            <div>
+              <p id="project-status" class="status-pill">ACTIVE</p>
+              <h3 id="project-name">Project</h3>
+              <p id="project-meta" class="muted"></p>
+            </div>
+            <a id="project-deployment" class="primary-link" href="#" target="_blank" rel="noopener noreferrer">Open production ↗</a>
+          </section>
+
+          <section class="panel purpose-panel" aria-labelledby="purpose-title">
+            <div class="panel-title"><span id="purpose-title">개발 목적과 실행 프로필</span><small>역할과 검증 범위 미리보기</small></div>
+            <div class="purpose-controls">
+              <label for="project-purpose">프로젝트 목적</label>
+              <select id="project-purpose">
+                <option value="">목적을 선택하세요</option>
+                <option value="rapid-prototype">빠른 프로토타입 체험</option>
+                <option value="operational-service">실제 운영 서비스</option>
+                <option value="portfolio">포트폴리오 프로젝트</option>
+                <option value="existing-project-improvement">기존 프로젝트 개선</option>
+              </select>
+              <label for="project-objective">개발 목표</label>
+              <textarea id="project-objective" maxlength="4000" rows="3" placeholder="이 프로젝트에서 만들고 싶은 것을 적어 주세요."></textarea>
+              <label for="project-target-root">작업 폴더</label>
+              <input id="project-target-root" type="text" placeholder="개발 작업 폴더의 절대 경로" />
+              <div class="purpose-buttons">
+                <button id="preview-execution-profile" class="secondary-button" type="button">실행 프로필 확인</button>
+                <button id="save-execution-profile" class="ghost-button" type="button">목적 저장</button>
+                <button id="start-project-run" class="primary-button" type="button">개발 시작</button>
+              </div>
+            </div>
+            <div id="execution-profile-content" class="profile-result" aria-live="polite"></div>
+          </section>
+
+          <section class="panel work-request-panel" aria-labelledby="work-request-title">
+            <div class="panel-title"><span id="work-request-title">Work queue</span><small>Durable project requests</small></div>
+            <div class="purpose-buttons">
+              <button id="queue-work-request" class="secondary-button" type="button">Queue current objective</button>
+            </div>
+            <div id="work-request-list" class="run-list" aria-live="polite"></div>
+          </section>
+
+          <div class="workspace-grid">
+            <section id="genesis-panel" class="panel panel-wide">
+              <div class="panel-title"><span>Genesis</span><small>Origin snapshot</small></div>
+              <div id="genesis-content"></div>
+            </section>
+            <section id="project-tree" class="panel">
+              <div class="panel-title"><span>Project Tree</span><small>Current structure</small></div>
+              <div id="tree-content"></div>
+            </section>
+            <section id="project-runs" class="panel">
+              <div class="panel-title"><span>Runs</span><small>Execution state</small></div>
+              <div id="runs-content"></div>
+            </section>
+            <section id="project-history" class="panel panel-wide">
+              <div class="panel-title"><span>History</span><small>Durable timeline</small></div>
+              <div id="history-content"></div>
+            </section>
+            <section id="portfolio-panel" class="panel panel-wide">
+              <div class="panel-title"><span>포트폴리오 초안</span><small>실제 개발 evidence 기반</small></div>
+              <div class="portfolio-actions">
+                <button id="load-portfolio" class="secondary-button" type="button">초안 불러오기</button>
+                <button id="copy-readme" class="ghost-button" type="button">README 복사</button>
+              </div>
+              <div id="portfolio-content" class="portfolio-content" aria-live="polite"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section id="evaluation-view" class="mode-view" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">DETERMINISTIC QUALITY GATES</p>
+            <h2>Evaluation</h2>
+            <p>Quick/soak 결과와 재현 가능한 실패 identity를 읽기 전용으로 확인합니다.</p>
+          </div>
+          <button id="refresh-evaluation" class="ghost-button" type="button">Refresh</button>
+        </div>
+        <div id="evaluation-empty" class="empty-state">
+          <strong>No evaluation reports yet.</strong>
+          <span>Run eval:quick or eval:soak locally to populate this view.</span>
+        </div>
+        <div id="evaluation-content" hidden>
+          <div id="evaluation-grid" class="evaluation-grid"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="status-banner" class="status-banner" role="status" hidden></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

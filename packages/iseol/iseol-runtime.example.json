@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "dataRoot": "/app/data",
+  "modelRoot": "/app/data/iseol",
+  "runRoot": "/app/data/runs",
+  "webWorkerRoot": "/app/data/web-workers",
+  "browserProfileRoot": "/app/data/browser-profile",
+  "lockPath": "/app/data/runtime/iseol-runtime.lock"
+}

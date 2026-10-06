@@ -1,0 +1,48 @@
+name: Release candidate
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Test-only placeholders. They are never used for external service calls.
+      DISCORD_TOKEN: release-discord-token
+      DISCORD_CLIENT_ID: release-discord-client
+      GITHUB_TOKEN: release-github-token
+      FIGMA_TOKEN: release-figma-token
+      NOTION_TOKEN: release-notion-token
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix user-ui ci
+      - run: npm audit --audit-level=high
+      - run: npm run check:release
+      - run: npm run build
+      - run: npm run user-ui:build
+      - run: npm test
+      - run: npm run test:iseol-user-product
+      - run: docker build --tag npc:${GITHUB_REF_NAME} .
+      - name: Verify compose health before publishing
+        run: npm run smoke:docker-release
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" --title "NPC ${GITHUB_REF_NAME}"
+          else
+            gh release create "${GITHUB_REF_NAME}" --generate-notes --title "NPC ${GITHUB_REF_NAME}"
+          fi

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "id": "claimlatch-status-fixture-v1",
+  "target": "verification-status-correctness",
+  "scorerId": "claimlatch-fixture-scorer-v1",
+  "method": "isotonic",
+  "datasetManifestSha256": "38648d134a6c5bc0984817d9aed27e2594273d15361ffbffb9601f3213786d17",
+  "observationCount": 12,
+  "mapping": [
+    {
+      "maxRawScore": 0.45,
+      "calibratedProbability": 0.6
+    },
+    {
+      "maxRawScore": 0.85,
+      "calibratedProbability": 0.75
+    },
+    {
+      "maxRawScore": 0.93,
+      "calibratedProbability": 1
+    },
+    {
+      "maxRawScore": 0.95,
+      "calibratedProbability": 1
+    },
+    {
+      "maxRawScore": 1,
+      "calibratedProbability": 1
+    }
+  ],
+  "validation": {
+    "datasetManifestSha256": "ff1cb77de9ca4de154bc52cc3bb220ed190d79afef61a79e428d9d4e8f753cc7",
+    "observationCount": 12,
+    "brierScore": 0.24583333333333332,
+    "expectedCalibrationError": 0.08333333333333334
+  },
+  "createdAt": "2026-09-30T00:00:00.000Z"
+}

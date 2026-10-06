@@ -1,0 +1,23 @@
+# Local secrets and runtime state
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.log
+
+# Generated dependencies and build output
+**/node_modules/
+**/dist/
+**/.venv/
+**/.pytest_cache/
+**/__pycache__/
+**/tmp/
+**/data/
+**/workspaces/
+
+# Local agent/runtime state
+.superpowers/
+var/
+

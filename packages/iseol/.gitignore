@@ -1,0 +1,22 @@
+node_modules
+dist
+.env
+data/projects.json
+data/contest-votes.json
+data/contest-feed.json
+data/contest-audience-feeds.json
+data/job-feed.json
+data/voice-study-time.json
+data/music-playlists.json
+.env
+node_modules/
+dist/
+*.log
+.worktrees/
+# Local Iseol runtime and investigation artifacts
+.tmp-*
+data/
+web/web-workers/
+.superpowers/
+%SystemDrive%/
+iseol-runtime.json

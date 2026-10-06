@@ -1,0 +1,27 @@
+{
+  "observationCount": 12,
+  "brierScore": 0.24583333333333332,
+  "expectedCalibrationError": 0.08333333333333334,
+  "byStatus": {
+    "SUPPORTED": {
+      "count": 6,
+      "brierScore": 0.07416666666666667,
+      "expectedCalibrationError": 0.21666666666666667
+    },
+    "CONTRADICTED": {
+      "count": 2,
+      "brierScore": 0.11125000000000002,
+      "expectedCalibrationError": 0.325
+    },
+    "UNSUPPORTED": {
+      "count": 2,
+      "brierScore": 0.6799999999999999,
+      "expectedCalibrationError": 0.8
+    },
+    "UNVERIFIABLE": {
+      "count": 2,
+      "brierScore": 0.46125,
+      "expectedCalibrationError": 0.675
+    }
+  }
+}

@@ -1,0 +1,118 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { HarnessEvidenceRecord } from "../src/harness/contracts.js";
+import { selectProjectEvidence } from "../src/project-model/evidence-service.js";
+
+const evidence = (id: string, projectId?: string, runId?: string): HarnessEvidenceRecord => ({
+  version: 1,
+  id,
+  kind: "test",
+  stage: "TEST",
+  recordedAt: "2026-09-25T12:00:00.000Z",
+  summary: id,
+  ...(projectId ? { projectId } : {}),
+  ...(runId ? { runId } : {}),
+});
+
+test("project evidence requires matching project and Run identity", () => {
+  const selected = selectProjectEvidence({
+    projectId: "project-a",
+    runId: "run-a",
+    evidence: [
+      evidence("owned", "project-a", "run-a"),
+      evidence("foreign-project", "project-b", "run-a"),
+      evidence("foreign-run", "project-a", "run-b"),
+      evidence("unbound"),
+    ],
+  });
+  assert.deepEqual(selected.map((item) => item.id), ["owned"]);
+});
+
+test("project evidence omits unsafe URL references but preserves safe and opaque references", () => {
+  const selected = selectProjectEvidence({
+    projectId: "project-a",
+    runId: "run-a",
+    evidence: [
+      { ...evidence("safe-url", "project-a", "run-a"), reference: "https://preview.example.test/result?ready=1" },
+      { ...evidence("credential-url", "project-a", "run-a"), reference: "https://preview.example.test/result?access_token=secret-value" },
+      { ...evidence("unsafe-scheme", "project-a", "run-a"), reference: "javascript:alert(1)" },
+      { ...evidence("protocol-relative", "project-a", "run-a"), reference: "//attacker.example/payload" },
+      { ...evidence("file-url", "project-a", "run-a"), reference: "file:/C:/secret.txt" },
+      { ...evidence("blob-url", "project-a", "run-a"), reference: "blob:https://attacker.example/id" },
+      { ...evidence("leading-space-url", "project-a", "run-a"), reference: " https://attacker.example/" },
+      { ...evidence("leading-control-url", "project-a", "run-a"), reference: "\njavascript:alert(1)" },
+      { ...evidence("control-protocol-relative", "project-a", "run-a"), reference: "\u0000//attacker.example/payload" },
+      { ...evidence("control-javascript", "project-a", "run-a"), reference: "\u0000javascript:alert(1)" },
+      { ...evidence("leading-space-opaque", "project-a", "run-a"), reference: " desktop-job:patch" },
+      { ...evidence("opaque", "project-a", "run-a"), reference: "desktop-job:patch" },
+      { ...evidence("build-opaque", "project-a", "run-a"), reference: "build://1" },
+      { ...evidence("nested-safe-url", "project-a", "run-a"), reference: "github:issue:https://github.com/team/repo/issues/42" },
+      { ...evidence("nested-credential-url", "project-a", "run-a"), reference: "github:issue:https://preview.example.test/?access_token=secret-value" },
+      { ...evidence("nested-fragment-credential", "project-a", "run-a"), reference: "desktop-job:job-1:https://preview.example.test/#oauth_token=secret-value" },
+      { ...evidence("nested-javascript-scheme", "project-a", "run-a"), reference: "github:issue:javascript:alert(1)" },
+      { ...evidence("nested-file-scheme", "project-a", "run-a"), reference: "notion:page-1:file://C:/secret" },
+      { ...evidence("nested-extra-url", "project-a", "run-a"), reference: "github:issue:https://safe.example/path,https://user:secret@evil.example/path" },
+      { ...evidence("nested-adjacent-url", "project-a", "run-a"), reference: "github:issue:https://safe.example/pathfoohttps://user:secret@evil.example/path" },
+      { ...evidence("opaque-adjacent-url", "project-a", "run-a"), reference: "notion:page-1foohttps://user:secret@evil.example/path" },
+      { ...evidence("colon-query-credential", "project-a", "run-a"), reference: "notion:page-1?access_token:secret-value" },
+      { ...evidence("colon-fragment-credential", "project-a", "run-a"), reference: "notion:page-1#oauth_token:secret-value" },
+      { ...evidence("double-encoded-credential", "project-a", "run-a"), reference: "notion:page-1?%2561ccess_token%3Dsecret-value" },
+      { ...evidence("triple-encoded-scheme", "project-a", "run-a"), reference: "javascript%25253Aalert(1)" },
+      { ...evidence("encoded-unsafe-scheme", "project-a", "run-a"), reference: "javascript%3Aalert(1)" },
+      { ...evidence("encoded-protocol-relative", "project-a", "run-a"), reference: "%2F%2Fevil.example/path" },
+      { ...evidence("decoded-control", "project-a", "run-a"), reference: "notion:page%00x" },
+      { ...evidence("safe-secret-path", "project-a", "run-a"), reference: "https://preview.example.test/secret" },
+      { ...evidence("safe-slash-query", "project-a", "run-a"), reference: "https://preview.example.test/?next=/token&path=/secret" },
+      { ...evidence("reasoning-turn", "project-a", "run-a"), reference: "reasoning-turn:turn-1" },
+      { ...evidence("discord-binding", "project-a", "run-a"), reference: "discord-binding:guild-1:stored-1:project-1" },
+      { ...evidence("figma-reference", "project-a", "run-a"), reference: "figma:file-1:version:v1" },
+      { ...evidence("notion-reference", "project-a", "run-a"), reference: "notion:page-1:2026-09-25T12:00:00.000Z" },
+      { ...evidence("opaque-credential", "project-a", "run-a"), reference: "notion:page-1?access_token=secret-value" },
+      { ...evidence("opaque-session-token", "project-a", "run-a"), reference: "notion:page-1?session_token=secret-value" },
+      { ...evidence("opaque-jwt", "project-a", "run-a"), reference: "notion:page-1#jwt=secret-value" },
+      { ...evidence("opaque-authorization", "project-a", "run-a"), reference: "notion:page-1?authorization=secret-value" },
+      { ...evidence("opaque-oauth-access-token", "project-a", "run-a"), reference: "notion:page-1?oauth_access_token=secret-value" },
+    ],
+  });
+  assert.deepEqual(selected, [
+    { ...evidence("safe-url", "project-a", "run-a"), reference: "https://preview.example.test/result?ready=1" },
+    { ...evidence("credential-url", "project-a", "run-a") },
+    { ...evidence("unsafe-scheme", "project-a", "run-a") },
+    { ...evidence("protocol-relative", "project-a", "run-a") },
+    { ...evidence("file-url", "project-a", "run-a") },
+    { ...evidence("blob-url", "project-a", "run-a") },
+    { ...evidence("leading-space-url", "project-a", "run-a") },
+    { ...evidence("leading-control-url", "project-a", "run-a") },
+    { ...evidence("control-protocol-relative", "project-a", "run-a") },
+    { ...evidence("control-javascript", "project-a", "run-a") },
+    { ...evidence("leading-space-opaque", "project-a", "run-a") },
+    { ...evidence("opaque", "project-a", "run-a"), reference: "desktop-job:patch" },
+    { ...evidence("build-opaque", "project-a", "run-a"), reference: "build://1" },
+    { ...evidence("nested-safe-url", "project-a", "run-a"), reference: "github:issue:https://github.com/team/repo/issues/42" },
+    { ...evidence("nested-credential-url", "project-a", "run-a") },
+    { ...evidence("nested-fragment-credential", "project-a", "run-a") },
+    { ...evidence("nested-javascript-scheme", "project-a", "run-a") },
+    { ...evidence("nested-file-scheme", "project-a", "run-a") },
+    { ...evidence("nested-extra-url", "project-a", "run-a") },
+    { ...evidence("nested-adjacent-url", "project-a", "run-a") },
+    { ...evidence("opaque-adjacent-url", "project-a", "run-a") },
+    { ...evidence("colon-query-credential", "project-a", "run-a") },
+    { ...evidence("colon-fragment-credential", "project-a", "run-a") },
+    { ...evidence("double-encoded-credential", "project-a", "run-a") },
+    { ...evidence("triple-encoded-scheme", "project-a", "run-a") },
+    { ...evidence("encoded-unsafe-scheme", "project-a", "run-a") },
+    { ...evidence("encoded-protocol-relative", "project-a", "run-a") },
+    { ...evidence("decoded-control", "project-a", "run-a") },
+    { ...evidence("safe-secret-path", "project-a", "run-a"), reference: "https://preview.example.test/secret" },
+    { ...evidence("safe-slash-query", "project-a", "run-a"), reference: "https://preview.example.test/?next=/token&path=/secret" },
+    { ...evidence("reasoning-turn", "project-a", "run-a"), reference: "reasoning-turn:turn-1" },
+    { ...evidence("discord-binding", "project-a", "run-a"), reference: "discord-binding:guild-1:stored-1:project-1" },
+    { ...evidence("figma-reference", "project-a", "run-a"), reference: "figma:file-1:version:v1" },
+    { ...evidence("notion-reference", "project-a", "run-a"), reference: "notion:page-1:2026-09-25T12:00:00.000Z" },
+    { ...evidence("opaque-credential", "project-a", "run-a") },
+    { ...evidence("opaque-session-token", "project-a", "run-a") },
+    { ...evidence("opaque-jwt", "project-a", "run-a") },
+    { ...evidence("opaque-authorization", "project-a", "run-a") },
+    { ...evidence("opaque-oauth-access-token", "project-a", "run-a") },
+  ]);
+});

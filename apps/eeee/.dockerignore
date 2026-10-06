@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+.pytest_cache
+__pycache__
+*.py[cod]
+.env
+.oss-builder
+workspaces
+build
+dist
+*.egg-info
+.superpowers
+.worktrees
+tests
+docs

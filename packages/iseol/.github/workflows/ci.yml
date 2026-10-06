@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      # Test-only placeholders. They are never used for external service calls.
+      DISCORD_TOKEN: ci-discord-token
+      DISCORD_CLIENT_ID: ci-discord-client
+      GITHUB_TOKEN: ci-github-token
+      FIGMA_TOKEN: ci-figma-token
+      NOTION_TOKEN: ci-notion-token
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix user-ui ci
+      - run: npm audit --audit-level=high
+      - run: node scripts/check-release-readiness.mjs # check-release-readiness
+      - run: npm run check:release
+      - run: npm run build
+      - run: npm run user-ui:build
+      - run: npm test
+      - run: npm run test:iseol-user-product

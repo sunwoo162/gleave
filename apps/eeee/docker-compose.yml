@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: oss-product-builder:local
+    ports:
+      - "8000:8000"
+    environment:
+      EXECUTION_MODE: demo
+      DATA_DIR: /app/.oss-builder
+      WORKSPACE_ROOT: /app/workspaces
+    volumes:
+      - data:/app/.oss-builder
+      - workspaces:/app/workspaces
+    restart: unless-stopped
+
+volumes:
+  data:
+  workspaces:

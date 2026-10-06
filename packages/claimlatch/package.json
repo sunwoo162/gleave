@@ -1,0 +1,105 @@
+{
+  "name": "claimlatch",
+  "version": "0.3.86",
+  "description": "Evidence-backed reliability gate for LLM answers.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "claimlatch": "dist/src/cli.js",
+    "claimlatch-proxy": "dist/src/proxy-cli.js",
+    "claimlatch-bench": "dist/src/benchmark-cli.js",
+    "claimlatch-receipt": "dist/src/receipt-cli.js",
+    "claimlatch-calibrate": "dist/src/calibration-cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./examples/express-route-handler.js": {
+      "types": "./dist/examples/express-route-handler.d.ts",
+      "import": "./dist/examples/express-route-handler.js"
+    },
+    "./examples/fastify-route-handler.js": {
+      "types": "./dist/examples/fastify-route-handler.d.ts",
+      "import": "./dist/examples/fastify-route-handler.js"
+    },
+    "./examples/hono-route-handler.js": {
+      "types": "./dist/examples/hono-route-handler.d.ts",
+      "import": "./dist/examples/hono-route-handler.js"
+    },
+    "./examples/sveltekit-route-handler.js": {
+      "types": "./dist/examples/sveltekit-route-handler.d.ts",
+      "import": "./dist/examples/sveltekit-route-handler.js"
+    },
+    "./examples/aws-lambda-http-api-handler.js": {
+      "types": "./dist/examples/aws-lambda-http-api-handler.d.ts",
+      "import": "./dist/examples/aws-lambda-http-api-handler.js"
+    },
+    "./examples/bun-server.js": {
+      "types": "./dist/examples/bun-server.d.ts",
+      "import": "./dist/examples/bun-server.js"
+    },
+    "./examples/deno-server.js": {
+      "types": "./dist/examples/deno-server.d.ts",
+      "import": "./dist/examples/deno-server.js"
+    },
+    "./examples/koa-route-handler.js": {
+      "types": "./dist/examples/koa-route-handler.d.ts",
+      "import": "./dist/examples/koa-route-handler.js"
+    },
+    "./examples/hapi-route-handler.js": {
+      "types": "./dist/examples/hapi-route-handler.d.ts",
+      "import": "./dist/examples/hapi-route-handler.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "dist/examples",
+    "benchmarks",
+    "docs",
+    "README.md",
+    "examples",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "check": "npm run build && node --test dist/tests/*.test.js",
+    "verify": "npm run check && node dist/src/benchmark-cli.js --validate --dataset benchmarks/independent.jsonl --manifest benchmarks/MANIFEST.json --format json",
+    "demo": "npm run build && node dist/examples/offline-demo.js",
+    "example:guarded": "npm run build && node dist/examples/guarded-answer.js",
+    "example:guarded-http": "npm run build && node dist/examples/guarded-http-service.js",
+    "example:receipts": "npm run build && node dist/examples/receipt-storage.js",
+    "example:structured": "npm run build && node dist/examples/structured-output-verifier.js",
+    "example:provider-proxy": "npm run build && node dist/examples/provider-compatible-proxy.js",
+    "prepublishOnly": "npm run verify",
+    "bench": "npm run build && node dist/src/benchmark-cli.js --dataset benchmarks/independent.jsonl",
+    "bench:manifest": "npm run build && node dist/src/benchmark-manifest-cli.js",
+    "bench:validate": "npm run build && node dist/src/benchmark-cli.js --validate --dataset benchmarks/independent.jsonl --manifest benchmarks/MANIFEST.json --format json",
+    "calibrate": "npm run build && node dist/src/calibration-cli.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "keywords": [
+    "llm",
+    "hallucination",
+    "fact-checking",
+    "verification",
+    "ai-safety",
+    "grounding",
+    "cli",
+    "llm-evaluation",
+    "reverse-proxy",
+    "provenance"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38"
+  }
+}

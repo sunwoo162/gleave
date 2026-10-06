@@ -1,0 +1,10 @@
+{
+  "description": "An AI-driven platform that connects real-life activities with a digital character, enabling users to develop projects, learn, and collaborate in a vibrant, gamified environment.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

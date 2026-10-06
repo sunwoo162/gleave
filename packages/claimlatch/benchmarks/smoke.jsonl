@@ -1,0 +1,4 @@
+{"id":"supported-date","claim":"Project X launched on 2025-01-03.","expected":"SUPPORTED","evidence":[{"title":"Release notes","url":"https://example.test/releases","snippet":"Project X launched on January 3, 2025."}]}
+{"id":"contradicted-date","claim":"Project X launched on 2025-02-03.","expected":"CONTRADICTED","evidence":[{"title":"Release notes","url":"https://example.test/releases","snippet":"Project X launched on January 3, 2025."}]}
+{"id":"unsupported-superlative","claim":"Project X is the fastest tool in the world.","expected":"UNSUPPORTED","evidence":[{"title":"Project X","url":"https://example.test","snippet":"Project X is a developer tool for build automation."}]}
+{"id":"unverifiable-no-evidence","claim":"An undocumented internal migration happened yesterday.","expected":"UNVERIFIABLE","evidence":[]}

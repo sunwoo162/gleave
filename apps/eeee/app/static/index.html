@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OSS Product Builder</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">LOCAL-FIRST BUILD WORKBENCH</p>
+        <h1>OSS Product Builder</h1>
+        <p>Turn a product idea into an evidence-backed, approved, and verified workspace run.</p>
+      </header>
+
+      <section class="panel" aria-labelledby="request-heading">
+        <div class="panel-heading">
+          <h2 id="request-heading">1. Describe the product</h2>
+          <span id="status" class="status" role="status" aria-live="polite">Ready</span>
+        </div>
+        <form id="request-form">
+          <label for="request-text">Product request</label>
+          <textarea id="request-text" required placeholder="Build a web app for..."></textarea>
+          <label for="workspace">Workspace inside the configured local root</label>
+          <input id="workspace" type="text" placeholder="Optional: C:\\...\\workspaces\\my-app" />
+          <button type="submit">Create request</button>
+        </form>
+        <p id="brief" class="muted"></p>
+        <div class="snapshot-columns">
+          <div>
+            <h3>Work plan</h3>
+            <ol id="work-plan" class="snapshot-list"></ol>
+          </div>
+          <div>
+            <h3>Approval history</h3>
+            <ol id="decision-events" class="snapshot-list"></ol>
+          </div>
+        </div>
+        <form id="restore-form" class="restore-form">
+          <label for="restore-request-id">Restore saved request</label>
+          <div class="inline-form">
+            <input id="restore-request-id" type="text" placeholder="Request ID" />
+            <button type="submit">Restore</button>
+          </div>
+        </form>
+        <p id="restore-status" class="muted" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="panel" aria-labelledby="research-heading">
+        <div class="panel-heading">
+          <h2 id="research-heading">2. Compare OSS candidates</h2>
+          <button id="research-button" type="button" disabled>Research</button>
+        </div>
+        <h3 id="candidate-selection-heading">Candidate evidence and selection</h3>
+        <div id="candidates" class="candidate-grid" aria-labelledby="candidate-selection-heading" aria-live="polite" aria-busy="false">
+          <p class="muted">Create a request to begin research.</p>
+        </div>
+        <button id="approve-button" type="button" disabled>Approve selected candidates</button>
+      </section>
+
+      <section class="panel" aria-labelledby="design-heading">
+        <div class="panel-heading">
+          <h2 id="design-heading">Design references</h2>
+          <span id="design-status" class="status" role="status" aria-live="polite">Provenance first</span>
+        </div>
+        <form id="design-form" aria-busy="false">
+          <label for="reference-url">Reference URL</label>
+          <input id="reference-url" type="url" required placeholder="https://example.com/inspiration" />
+          <label for="reference-keywords">Keywords</label>
+          <input id="reference-keywords" type="text" placeholder="dashboard, sidebar, cards" />
+          <label for="reference-target">Target type</label>
+          <input id="reference-target" type="text" value="web_app" required />
+          <button id="collect-reference-button" type="submit">Collect reference pack</button>
+        </form>
+        <div id="references" class="reference-list" aria-label="Design references" aria-live="polite"></div>
+        <p id="tokens" class="code-panel" aria-label="Design tokens" aria-live="polite"></p>
+        <p id="attribution" class="muted" aria-label="Attribution" aria-live="polite"></p>
+        <form id="visual-form" class="visual-form" aria-busy="false">
+          <label for="visual-url">Local app URL for visual verification</label>
+          <input id="visual-url" type="url" placeholder="http://127.0.0.1:8000" />
+          <label for="visual-baseline">Baseline screenshot path</label>
+          <input id="visual-baseline" type="text" placeholder="C:\\...\\baseline.png" />
+          <button id="verify-visual-button" type="submit">Verify local screenshot</button>
+        </form>
+        <p id="visual-status" class="muted" role="status" aria-live="polite">No visual comparison run yet.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="run-heading">
+        <div class="panel-heading">
+          <h2 id="run-heading">3. Execute and verify</h2>
+          <button id="run-button" type="button" disabled>Run approved task</button>
+          <button id="retry-button" type="button" disabled>Retry unavailable run</button>
+        </div>
+        <h3 id="recent-runs-heading">Recent runs</h3>
+        <p id="recent-runs-status" class="muted" role="status" aria-live="polite">Loading saved runs…</p>
+        <div class="recent-run-filters">
+          <div class="recent-run-filter">
+            <label for="recent-run-search">Search by request or run ID</label>
+            <input id="recent-run-search" type="search" placeholder="Search IDs" autocomplete="off" />
+          </div>
+          <div class="recent-run-filter">
+            <label for="recent-run-status-filter">Filter by status</label>
+            <select id="recent-run-status-filter">
+              <option value="all">All statuses</option>
+              <option value="created">Created</option>
+              <option value="running">Running</option>
+              <option value="completed">Completed</option>
+              <option value="failed">Failed</option>
+              <option value="unavailable">Unavailable</option>
+            </select>
+          </div>
+          <div class="recent-run-filter">
+            <label for="recent-run-created-after">Created after (local time)</label>
+            <input id="recent-run-created-after" type="datetime-local" step="1" />
+          </div>
+          <div class="recent-run-filter">
+            <label for="recent-run-created-before">Created before (local time)</label>
+            <input id="recent-run-created-before" type="datetime-local" step="1" />
+          </div>
+          <div class="recent-run-filter">
+            <label for="recent-run-page-size">Runs per page</label>
+            <select id="recent-run-page-size">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div class="recent-run-filter">
+            <label for="recent-run-sort">Sort runs</label>
+            <select id="recent-run-sort">
+              <option value="newest" selected>Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+          </div>
+          <div class="recent-run-actions">
+            <button id="refresh-recent-runs" type="button">Refresh runs</button>
+            <button id="clear-recent-run-filters" class="recent-run-clear" type="button">
+              Clear filters
+            </button>
+          </div>
+        </div>
+        <ol id="recent-runs" class="run-history" aria-label="Recent runs"></ol>
+        <button id="load-more-runs" type="button" hidden>Load more runs</button>
+        <h3>Run history</h3>
+        <ol id="run-history" class="run-history" aria-label="Run history"></ol>
+        <p id="run-summary" class="muted" role="status" aria-live="polite">Approval is required before execution.</p>
+        <p class="notice">OpenHands is optional. If execution is unavailable, configure <code>LLM_API_KEY</code> and <code>LLM_MODEL</code> in the local environment.</p>
+        <div class="run-columns">
+          <div>
+            <h3>Events</h3>
+            <ol id="events" class="event-list" role="log" aria-live="polite" aria-label="Run events"></ol>
+          </div>
+          <div>
+            <h3>Changed files</h3>
+            <ul id="changed-files" class="file-list" aria-label="Changed files"></ul>
+          </div>
+          <div>
+            <h3>Test commands</h3>
+            <ul id="test-commands" class="file-list" aria-label="Test commands"></ul>
+          </div>
+          <div>
+            <h3>Artifacts</h3>
+            <ul id="run-artifacts" class="file-list" aria-label="Run artifacts"></ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

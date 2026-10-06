@@ -1,0 +1,58 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+const characterSource = resolve(process.cwd(), "user-ui/src/pages/Character.tsx");
+const visualSource = resolve(process.cwd(), "user-ui/src/components/Character.tsx");
+const assetSource = resolve(process.cwd(), "user-ui/src/components/CharacterAssets.tsx");
+const userAsset = resolve(process.cwd(), "user-ui/public/assets/characters/iseol-user-character-v1.png");
+const aiAsset = resolve(process.cwd(), "user-ui/public/assets/characters/iseol-ai-companion-v1.png");
+const worldSource = resolve(process.cwd(), "user-ui/src/pages/MyWorld.tsx");
+const chatSource = resolve(process.cwd(), "user-ui/src/pages/AIChat.tsx");
+const browserJourney = resolve(process.cwd(), "scripts/iseol-user-ui-e2e.ts");
+
+test("character customization persists the selected appearance and uses app-safe navigation", async () => {
+  const source = await readFile(characterSource, "utf8");
+  const visual = await readFile(visualSource, "utf8");
+  const assets = await readFile(assetSource, "utf8");
+  const world = await readFile(worldSource, "utf8");
+  const chat = await readFile(chatSource, "utf8");
+  const journey = await readFile(browserJourney, "utf8");
+
+  assert.match(source, /import \{ Link,? /);
+  assert.match(source, /<Link to="\/character\/customize"/);
+  assert.match(source, /<Link to="\/character"/);
+  assert.match(source, /캐릭터 설정 초기화/);
+  assert.match(source, /setSelectedAcc\('cap'\)/);
+  assert.match(source, /setAppearance\(defaultAppearance\)/);
+  assert.match(source, /setSelectedRooms\(\['plant'\]\)/);
+  assert.match(source, /profile\.status !== 'ready'/);
+  assert.match(source, /disabled=\{!characterReady \|\| saving\}/);
+  assert.match(source, /disabled=\{saving \|\| !characterReady\}/);
+  assert.match(source, /<Link to="\/activity"/);
+  assert.match(source, /updateCharacter\(\{ appearance: \{/);
+  assert.match(source, /accessory: selectedAcc/);
+  assert.match(source, /roomItems/);
+  assert.match(source, /aria-pressed=/);
+  assert.match(source, /role="status"/);
+  assert.match(source, /<UserCharacter[^>]*appearance=/);
+  assert.match(source, /growth\?\.achievements/);
+  assert.match(visual, /appearance\?: Record<string, string \| number \| boolean>/);
+  assert.match(visual, /hairStyle/);
+  assert.match(assets, /USER_CHARACTER_ASSET_SRC/);
+  assert.match(assets, /AI_COMPANION_ASSET_SRC/);
+  assert.match(assets, /onError=/);
+  assert.match(assets, /role="img"/);
+  assert.match(assets, /alt=/);
+  assert.ok((await readFile(userAsset)).byteLength > 1000);
+  assert.ok((await readFile(aiAsset)).byteLength > 1000);
+  assert.match(world, /UserCharacterAsset/);
+  assert.match(world, /AICompanionAsset/);
+  assert.match(chat, /AICompanionAsset/);
+  assert.match(chat, /UserCharacterAsset/);
+  assert.match(journey, /verifyCharacterAssetsUi/);
+  assert.match(journey, /characterAssetsUi: "passed"/);
+  assert.match(journey, /verifyCharacterCustomizationUi/);
+  assert.match(journey, /characterCustomizationUi: "passed"/);
+});

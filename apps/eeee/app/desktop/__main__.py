@@ -1,0 +1,50 @@
+import os
+
+from app.config import Settings
+from app.desktop.client import PetApiClient
+from app.desktop.runtime import ApiStartupError, EmbeddedApiRuntime
+
+
+def connect_desktop_api(
+    api_url: str | None = None,
+    *,
+    settings: Settings | None = None,
+) -> tuple[PetApiClient, EmbeddedApiRuntime | None]:
+    configured_url = os.getenv("PET_API_URL") if api_url is None else api_url
+    project_id = os.getenv("PET_PROJECT_ID", "default")
+    if configured_url:
+        return PetApiClient(configured_url, project_id), None
+
+    runtime = EmbeddedApiRuntime(settings=settings)
+    try:
+        return PetApiClient(runtime.start(), project_id), runtime
+    except Exception:
+        runtime.stop()
+        raise
+
+
+def main() -> int:
+    from PySide6.QtWidgets import QApplication
+
+    from app.desktop.window import PetWindow
+
+    application = QApplication([])
+    runtime = None
+    startup_error = None
+    try:
+        client, runtime = connect_desktop_api()
+    except ApiStartupError as exc:
+        client = PetApiClient("http://127.0.0.1:1")
+        startup_error = str(exc)
+
+    window = PetWindow(client, initial_error=startup_error)
+    window.show()
+    try:
+        return application.exec()
+    finally:
+        if runtime is not None:
+            runtime.stop()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
