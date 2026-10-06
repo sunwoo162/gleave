@@ -12,6 +12,7 @@ from app.harness.state import AgentTask, ProjectState
 from app.domain.errors import AlreadyApprovedError, ApprovalError, CandidateSetChangedError
 from app.integrations.claimlatch_audit import ClaimLatchAuditStore
 from app.memory.store import MemoryStore
+from app.project_runtime.models import ProjectProfile
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -256,6 +257,10 @@ class SQLiteStore:
                     id TEXT PRIMARY KEY, name TEXT NOT NULL, workspace TEXT NOT NULL,
                     revision TEXT NOT NULL, state TEXT NOT NULL, active_task_id TEXT
                 );
+                CREATE TABLE IF NOT EXISTS project_profiles (
+                    project_id TEXT PRIMARY KEY, project_revision TEXT NOT NULL,
+                    profile_json TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, request_id TEXT NOT NULL,
                     state TEXT NOT NULL, message TEXT NOT NULL, required_action TEXT,
@@ -449,6 +454,24 @@ class SQLiteStore:
         if row is None:
             raise KeyError(f"Project not found: {project_id}")
         return _project_from_row(row)
+
+    def save_project_profile(self, profile: ProjectProfile) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO project_profiles (project_id, project_revision, profile_json) "
+                "VALUES (?, ?, ?) ON CONFLICT(project_id) DO UPDATE SET "
+                "project_revision = excluded.project_revision, profile_json = excluded.profile_json",
+                (profile.project_id, profile.project_revision, profile.model_dump_json()),
+            )
+
+    def get_project_profile(self, project_id: str) -> ProjectProfile:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT profile_json FROM project_profiles WHERE project_id = ?", (project_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Project profile not found: {project_id}")
+        return ProjectProfile.model_validate_json(row["profile_json"])
 
     def update_project_revision(self, project_id: str, revision: str) -> Project:
         with self._connect() as connection:
