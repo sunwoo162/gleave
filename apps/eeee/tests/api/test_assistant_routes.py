@@ -48,3 +48,15 @@ def test_assistant_route_returns_clarification_for_ambiguous_intent(tmp_path) ->
     payload = response.json()
     assert payload["status"] == "needs_clarification"
     assert payload["project_id"] is None
+
+
+def test_project_document_sync_reports_missing_notion_configuration(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path / "data", workspace_root=tmp_path / "workspaces")
+    client = TestClient(create_app(settings))
+
+    created = client.post("/api/assistant/route", json={"text": "웹 프로젝트 하나 만들어줘"})
+    project_id = created.json()["project_id"]
+    response = client.post(f"/api/projects/{project_id}/documents/sync")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "awaiting_configuration"

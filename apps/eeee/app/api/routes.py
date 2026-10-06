@@ -17,7 +17,8 @@ from app.design.visual_verify import VisualReport
 from app.integrations.contracts import ProjectBriefV1, ProjectOutcomeReportV1
 from app.memory.models import MemoryRecord
 from app.mobile.bridge import MobileBridge, MobileBridgeError
-from app.project_runtime.models import ProjectProfile
+from app.project_runtime.documents import ProjectDocumentService
+from app.project_runtime.models import ProjectDocumentSyncResult, ProjectProfile
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -174,7 +175,9 @@ def build_router(coordinator: Coordinator) -> APIRouter:
     return router
 
 
-def build_assistant_router(service: AssistantService) -> APIRouter:
+def build_assistant_router(
+    service: AssistantService, documents: ProjectDocumentService | None = None
+) -> APIRouter:
     router = APIRouter(prefix="/api")
 
     @router.post("/assistant/route", response_model=AssistantRouteResponse)
@@ -189,6 +192,16 @@ def build_assistant_router(service: AssistantService) -> APIRouter:
     @router.get("/projects/{project_id}/profile", response_model=ProjectProfile)
     def get_project_profile(project_id: str) -> ProjectProfile:
         return service.get_project_profile(project_id)
+
+    @router.post(
+        "/projects/{project_id}/documents/sync",
+        response_model=ProjectDocumentSyncResult,
+    )
+    def sync_project_document(project_id: str) -> ProjectDocumentSyncResult:
+        if documents is None:
+            raise HTTPException(status_code=503, detail="Project document service is unavailable")
+        profile = service.get_project_profile(project_id)
+        return documents.sync(profile)
 
     return router
 

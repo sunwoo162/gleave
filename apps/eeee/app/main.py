@@ -25,11 +25,13 @@ from app.domain.errors import ApprovalError
 from app.execution.runner import WorkspaceCommandRunner
 from app.execution.verifier import WorkspaceVerifier
 from app.integrations.claimlatch_client import ClaimLatchClient
+from app.integrations.notion_client import NotionClient
 from app.mobile.bridge import MobileBridge
 from app.oss.github_client import GitHubClient
 from app.oss.researcher import GitHubResearcher
 from app.project_runtime.provisioner import ProjectProvisioner
 from app.project_runtime.connectors import build_default_connectors
+from app.project_runtime.documents import ProjectDocumentService
 from app.storage.sqlite import SQLiteStore
 from app.trust.gate import TrustGate
 
@@ -39,6 +41,7 @@ def create_app(
     *,
     researcher: GitHubResearcher | None = None,
     agent_runtime: AgentRuntime | None = None,
+    notion_client: NotionClient | None = None,
 ) -> FastAPI:
     app_settings = settings or Settings()
     application = FastAPI(title=app_settings.app_name)
@@ -70,7 +73,7 @@ def create_app(
         connector_id
         for connector_id, configured in {
             "github": bool(app_settings.github_token),
-            "notion": bool(app_settings.notion_token),
+            "notion": bool(app_settings.notion_token and app_settings.notion_parent_page_id),
         }.items()
         if configured
     }
@@ -107,10 +110,20 @@ def create_app(
         engine_version=app_settings.claim_latch_version,
         current_revision_resolver=_current_project_revision(store),
     )
+    configured_notion = notion_client
+    if configured_notion is None and app_settings.notion_token and app_settings.notion_parent_page_id:
+        configured_notion = NotionClient(
+            app_settings.notion_token,
+            parent_page_id=app_settings.notion_parent_page_id,
+            base_url=app_settings.notion_api_base,
+            api_version=app_settings.notion_api_version,
+        )
+    project_documents = ProjectDocumentService(store, configured_notion, trust_gate)
     application.state.coordinator = coordinator
     application.state.claim_latch_client = claim_latch_client
     application.state.trust_gate = trust_gate
     application.state.mobile_bridge = mobile_bridge
+    application.state.project_documents = project_documents
     runtime = agent_runtime or OpenHandsRuntime(
         api_key=app_settings.llm_api_key,
         model=app_settings.llm_model,
@@ -162,7 +175,7 @@ def create_app(
         return {"status": "ok", "claimLatch": trust_gate.health_payload()}
 
     application.include_router(build_router(coordinator))
-    application.include_router(build_assistant_router(assistant_service))
+    application.include_router(build_assistant_router(assistant_service, project_documents))
     application.include_router(build_mobile_router(mobile_bridge, assistant_service, mobile_snapshot))
     application.include_router(build_api_router(api_flow))
     application.include_router(build_design_router(design_service))

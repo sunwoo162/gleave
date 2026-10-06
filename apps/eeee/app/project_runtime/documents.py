@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from typing import Protocol
+
+from app.integrations.notion_client import NotionPageRef
+from app.project_runtime.models import (
+    ProjectDocumentRecord,
+    ProjectDocumentSyncResult,
+    ProjectProfile,
+)
+from app.storage.sqlite import SQLiteStore
+from app.trust.models import TrustCheck
+
+
+class NotionDocumentAdapter(Protocol):
+    def create_project_page(self, profile: ProjectProfile, lines: list[str]) -> NotionPageRef: ...
+
+    def append_revision(self, page_id: str, revision: str, lines: list[str]) -> None: ...
+
+
+class ProjectDocumentService:
+    """Synchronize a Project Runtime profile into Notion after trust verification."""
+
+    def __init__(self, store: SQLiteStore, notion: NotionDocumentAdapter | None, trust_gate: object) -> None:
+        self.store = store
+        self.notion = notion
+        self.trust_gate = trust_gate
+
+    def sync(self, profile: ProjectProfile) -> ProjectDocumentSyncResult:
+        if self.notion is None:
+            return ProjectDocumentSyncResult(
+                status="awaiting_configuration",
+                project_id=profile.project_id,
+                provider="notion",
+                revision=profile.project_revision,
+                reason="Notion token and parent page are not configured",
+            )
+
+        lines = _document_lines(profile)
+        content_hash = _content_hash(lines)
+        existing = self._existing(profile.project_id)
+        if existing is not None and existing.content_hash == content_hash:
+            return ProjectDocumentSyncResult(
+                status="unchanged",
+                project_id=profile.project_id,
+                provider="notion",
+                revision=profile.project_revision,
+                document=existing,
+                reason="The same project revision is already synchronized",
+            )
+
+        trust = self.trust_gate.verify_action(
+            subject_id=f"{profile.project_id}:notion",
+            project_id=profile.project_id,
+            project_revision=profile.project_revision,
+            action="notion.project_document.write",
+            payload={"provider": "notion", "contentHash": content_hash},
+        )
+        if trust.decision != "PASS":
+            return ProjectDocumentSyncResult(
+                status="blocked",
+                project_id=profile.project_id,
+                provider="notion",
+                revision=profile.project_revision,
+                document=existing,
+                trust=trust,
+                reason=trust.reason,
+            )
+
+        if existing is None:
+            page = self.notion.create_project_page(profile, lines)
+            document = _document_record(profile, page, content_hash)
+        else:
+            self.notion.append_revision(existing.external_id, profile.project_revision, lines)
+            document = existing.model_copy(
+                update={
+                    "project_revision": profile.project_revision,
+                    "content_hash": content_hash,
+                    "synced_at": datetime.now(timezone.utc),
+                }
+            )
+        self.store.save_project_document(document)
+        return ProjectDocumentSyncResult(
+            status="synced",
+            project_id=profile.project_id,
+            provider="notion",
+            revision=profile.project_revision,
+            document=document,
+            trust=trust,
+        )
+
+    def _existing(self, project_id: str) -> ProjectDocumentRecord | None:
+        try:
+            return self.store.get_project_document(project_id, "notion")
+        except KeyError:
+            return None
+
+
+def _document_record(
+    profile: ProjectProfile, page: NotionPageRef, content_hash: str
+) -> ProjectDocumentRecord:
+    return ProjectDocumentRecord(
+        project_id=profile.project_id,
+        provider="notion",
+        project_revision=profile.project_revision,
+        external_id=page.id,
+        external_url=page.url,
+        content_hash=content_hash,
+        synced_at=datetime.now(timezone.utc),
+    )
+
+
+def _document_lines(profile: ProjectProfile) -> list[str]:
+    return [
+        f"Goal: {profile.goal}",
+        f"Project ID: {profile.project_id}",
+        f"Revision: {profile.project_revision}",
+        f"Workspace: {profile.workspace}",
+        f"Scope: {', '.join(profile.scope) or 'not specified'}",
+        f"Constraints: {', '.join(profile.constraints) or 'none'}",
+        f"Acceptance criteria: {', '.join(profile.acceptance_criteria) or 'not specified'}",
+        f"QA baselines: {', '.join(profile.qa_baseline_ids) or 'none'}",
+    ]
+
+
+def _content_hash(lines: list[str]) -> str:
+    encoded = json.dumps(lines, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()

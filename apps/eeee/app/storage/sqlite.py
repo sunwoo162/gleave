@@ -12,7 +12,7 @@ from app.harness.state import AgentTask, ProjectState
 from app.domain.errors import AlreadyApprovedError, ApprovalError, CandidateSetChangedError
 from app.integrations.claimlatch_audit import ClaimLatchAuditStore
 from app.memory.store import MemoryStore
-from app.project_runtime.models import ProjectProfile
+from app.project_runtime.models import ProjectDocumentRecord, ProjectProfile
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -261,6 +261,11 @@ class SQLiteStore:
                     project_id TEXT PRIMARY KEY, project_revision TEXT NOT NULL,
                     profile_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS project_documents (
+                    project_id TEXT NOT NULL, provider TEXT NOT NULL,
+                    project_revision TEXT NOT NULL, document_json TEXT NOT NULL,
+                    PRIMARY KEY (project_id, provider)
+                );
                 CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, request_id TEXT NOT NULL,
                     state TEXT NOT NULL, message TEXT NOT NULL, required_action TEXT,
@@ -472,6 +477,31 @@ class SQLiteStore:
         if row is None:
             raise KeyError(f"Project profile not found: {project_id}")
         return ProjectProfile.model_validate_json(row["profile_json"])
+
+    def save_project_document(self, document: ProjectDocumentRecord) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO project_documents "
+                "(project_id, provider, project_revision, document_json) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(project_id, provider) DO UPDATE SET "
+                "project_revision = excluded.project_revision, document_json = excluded.document_json",
+                (
+                    document.project_id,
+                    document.provider,
+                    document.project_revision,
+                    document.model_dump_json(),
+                ),
+            )
+
+    def get_project_document(self, project_id: str, provider: str) -> ProjectDocumentRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT document_json FROM project_documents WHERE project_id = ? AND provider = ?",
+                (project_id, provider),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Project document not found: {project_id}/{provider}")
+        return ProjectDocumentRecord.model_validate_json(row["document_json"])
 
     def update_project_revision(self, project_id: str, revision: str) -> Project:
         with self._connect() as connection:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -13,6 +14,7 @@ ConnectorState = Literal[
     "blocked",
 ]
 ProvisioningStatus = Literal["ready", "awaiting_configuration", "blocked"]
+DocumentSyncStatus = Literal["synced", "unchanged", "awaiting_configuration", "blocked"]
 
 
 class ConnectorBinding(BaseModel):
@@ -75,4 +77,28 @@ class ProjectProvisioningResult(BaseModel):
     @property
     def status(self) -> ProvisioningStatus:
         return self.profile.provisioning_status
+
+
+class ProjectDocumentRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    project_id: str = Field(min_length=1, alias="projectId")
+    provider: Literal["notion"]
+    project_revision: str = Field(min_length=1, alias="projectRevision")
+    external_id: str = Field(min_length=1, alias="externalId")
+    external_url: str | None = Field(default=None, alias="externalUrl")
+    content_hash: str = Field(min_length=1, alias="contentHash")
+    synced_at: datetime = Field(alias="syncedAt")
+
+
+class ProjectDocumentSyncResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    status: DocumentSyncStatus
+    project_id: str = Field(min_length=1, alias="projectId")
+    provider: Literal["notion"]
+    revision: str = Field(min_length=1)
+    document: ProjectDocumentRecord | None = None
+    trust: Any | None = None
+    reason: str | None = None
 
