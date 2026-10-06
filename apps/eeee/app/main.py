@@ -8,7 +8,16 @@ from fastapi.staticfiles import StaticFiles
 from app.agent.openhands_runtime import OpenHandsRuntime
 from app.agent.protocol import AgentRuntime
 from app.api.service import ApiFlowService
-from app.api.routes import build_api_router, build_design_router, build_router
+from app.api.routes import (
+    build_api_router,
+    build_assistant_router,
+    build_design_router,
+    build_mobile_router,
+    build_router,
+)
+from app.assistant.registry import build_default_registry
+from app.assistant.router import CapabilityRouter
+from app.assistant.service import AssistantService
 from app.config import Settings
 from app.coordinator.service import Coordinator
 from app.design.references import DesignService
@@ -16,9 +25,13 @@ from app.domain.errors import ApprovalError
 from app.execution.runner import WorkspaceCommandRunner
 from app.execution.verifier import WorkspaceVerifier
 from app.integrations.claimlatch_client import ClaimLatchClient
+from app.mobile.bridge import MobileBridge
 from app.oss.github_client import GitHubClient
 from app.oss.researcher import GitHubResearcher
+from app.project_runtime.provisioner import ProjectProvisioner
+from app.project_runtime.connectors import build_default_connectors
 from app.storage.sqlite import SQLiteStore
+from app.trust.gate import TrustGate
 
 
 def create_app(
@@ -31,6 +44,12 @@ def create_app(
     application = FastAPI(title=app_settings.app_name)
     store = SQLiteStore(app_settings.data_dir / "state.sqlite3")
     store.init()
+    mobile_bridge = MobileBridge(
+        store.path,
+        enabled=app_settings.mobile_bridge_enabled,
+        pairing_ttl_seconds=app_settings.mobile_pairing_ttl_seconds,
+    )
+    mobile_bridge.init()
     configured_researcher = researcher if researcher is not None else (
         GitHubResearcher(GitHubClient(token=app_settings.github_token))
         if app_settings.github_token
@@ -46,6 +65,19 @@ def create_app(
             )
         )
     coordinator = Coordinator(store, researcher=configured_researcher, verifier=verifier)
+    capability_router = CapabilityRouter(build_default_registry())
+    configured_connectors = {
+        connector_id
+        for connector_id, configured in {
+            "github": bool(app_settings.github_token),
+            "notion": bool(app_settings.notion_token),
+        }.items()
+        if configured
+    }
+    project_provisioner = ProjectProvisioner(
+        store,
+        connectors=build_default_connectors(configured=configured_connectors),
+    )
     app_settings.workspace_root.mkdir(parents=True, exist_ok=True)
     default_workspace = app_settings.workspace_root / "default"
     default_workspace.mkdir(parents=True, exist_ok=True)
@@ -64,20 +96,58 @@ def create_app(
             audit_store=store.claimlatch_audits,
             policy_version=app_settings.claim_latch_policy_version,
             adapter_version=app_settings.claim_latch_adapter_version,
+            claim_latch_profile_version=app_settings.claim_latch_profile_version,
             claim_latch_version=app_settings.claim_latch_version,
             current_revision_resolver=_current_project_revision(store),
         )
+    trust_gate = TrustGate(
+        claim_latch_client,
+        mode=app_settings.claim_latch_mode,
+        profile_version=app_settings.claim_latch_profile_version,
+        engine_version=app_settings.claim_latch_version,
+        current_revision_resolver=_current_project_revision(store),
+    )
     application.state.coordinator = coordinator
     application.state.claim_latch_client = claim_latch_client
+    application.state.trust_gate = trust_gate
+    application.state.mobile_bridge = mobile_bridge
     runtime = agent_runtime or OpenHandsRuntime(
         api_key=app_settings.llm_api_key,
         model=app_settings.llm_model,
         base_url=app_settings.llm_base_url,
     )
-    api_flow = ApiFlowService(coordinator, store, app_settings, runtime)
+    api_flow = ApiFlowService(
+        coordinator,
+        store,
+        app_settings,
+        runtime,
+        capability_router=capability_router,
+        project_provisioner=project_provisioner,
+    )
     application.state.api_flow = api_flow
+    assistant_service = AssistantService(
+        router=capability_router,
+        coordinator=coordinator,
+        store=store,
+        settings=app_settings,
+        provisioner=project_provisioner,
+    )
+    application.state.assistant_service = assistant_service
     design_service = DesignService(store=store)
     application.state.design_service = design_service
+
+    def mobile_snapshot(project_id: str | None) -> dict[str, object]:
+        snapshot: dict[str, object] = {
+            "status": "ok",
+            "transport": "desktop-bridge",
+            "bridge": mobile_bridge.status(),
+            "claimLatch": trust_gate.health_payload(),
+        }
+        if project_id is not None:
+            snapshot["projectId"] = project_id
+            snapshot["state"] = coordinator.get_state(project_id).model_dump(mode="json")
+            snapshot["projectProfile"] = store.get_project_profile(project_id).model_dump(mode="json")
+        return snapshot
 
     @application.exception_handler(ApprovalError)
     async def handle_approval_error(_request: Request, exc: ApprovalError) -> JSONResponse:
@@ -88,10 +158,12 @@ def create_app(
         return JSONResponse(status_code=404, content={"detail": str(exc).strip("'")})
 
     @application.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> dict[str, object]:
+        return {"status": "ok", "claimLatch": trust_gate.health_payload()}
 
     application.include_router(build_router(coordinator))
+    application.include_router(build_assistant_router(assistant_service))
+    application.include_router(build_mobile_router(mobile_bridge, assistant_service, mobile_snapshot))
     application.include_router(build_api_router(api_flow))
     application.include_router(build_design_router(design_service))
     static_dir = Path(__file__).parent / "static"

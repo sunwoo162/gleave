@@ -78,7 +78,7 @@ def build_default_registry() -> CapabilityRegistry:
             "Project Execution",
             ["project", "development", "build"],
             ["프로젝트", "앱", "서비스", "기능", "개발", "만들어", "구현", "project", "app", "build", "develop"],
-            required_connectors=["github", "discord", "google-calendar", "desktop-mobile"],
+            required_connectors=["notion", "github", "google-calendar", "desktop", "mobile-bridge"],
             side_effect_level="external",
             approval_level="user",
             memory_writable=True,
@@ -97,23 +97,11 @@ def build_default_registry() -> CapabilityRegistry:
     )
     registry.register(
         _descriptor(
-            "communication",
-            "Communication",
-            ["communication", "collaboration"],
-            ["디스코드", "discord", "방", "채널", "팀", "메시지", "협업", "channel", "team"],
-            required_connectors=["discord"],
-            side_effect_level="external",
-            approval_level="user",
-        ),
-        None,
-    )
-    registry.register(
-        _descriptor(
             "presence",
             "Presence",
             ["desktop", "mobile", "notification"],
             ["바탕화면", "위젯", "휴대폰", "모바일", "desktop", "widget", "mobile", "phone"],
-            required_connectors=["desktop-mobile"],
+            required_connectors=["desktop", "mobile-bridge"],
             side_effect_level="local",
         ),
         None,

@@ -41,15 +41,19 @@ def test_provisioning_creates_one_profile_and_truthful_connector_plans(tmp_path)
     assert Path(result.profile.workspace).is_dir()
     assert result.profile.capabilities == ["project-execution"]
     assert {item.connector_id for item in result.profile.connectors} == {
+        "notion",
         "google-calendar",
-        "discord",
         "github",
-        "desktop-mobile",
+        "iseol-runtime",
+        "desktop",
+        "mobile-bridge",
     }
     assert result.profile.provisioning_status == "awaiting_configuration"
-    assert result.profile.connector("discord").state == "awaiting_configuration"
-    assert result.profile.connector("desktop-mobile").state == "ready"
-    assert result.missing_connectors == ["discord", "github", "google-calendar"]
+    assert result.profile.connector("notion").state == "awaiting_configuration"
+    assert result.profile.connector("iseol-runtime").state == "ready"
+    assert result.profile.connector("desktop").state == "ready"
+    assert result.profile.connector("mobile-bridge").state == "ready"
+    assert result.missing_connectors == ["github", "google-calendar", "notion"]
 
 
 def test_repeated_provisioning_is_idempotent_and_survives_store_reopen(tmp_path) -> None:

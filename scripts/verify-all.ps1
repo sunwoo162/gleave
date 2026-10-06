@@ -24,6 +24,11 @@ try {
         & $python -m pytest -q --basetemp (Join-Path $root "var\pytest-p0") `
             tests/integrations `
             tests/memory `
+            tests/trust `
+            tests/assistant `
+            tests/project_runtime `
+            tests/mobile `
+            tests/e2e `
             tests/coordinator/test_memory_project_flow.py `
             tests/api/test_memory_api.py
     }

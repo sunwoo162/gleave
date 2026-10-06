@@ -10,7 +10,7 @@ from app.main import create_app, run
 def test_package_metadata_exposes_console_script():
     metadata = Path("pyproject.toml").read_text(encoding="utf-8")
 
-    assert "oss-product-builder = \"app.main:run\"" in metadata
+    assert "gleave = \"app.main:run\"" in metadata
 
 
 def test_run_passes_host_and_port_to_uvicorn():
@@ -27,4 +27,4 @@ def test_create_app_health_endpoint_works_with_explicit_paths(tmp_path):
     )
 
     with TestClient(create_app(settings)) as client:
-        assert client.get("/health").json() == {"status": "ok"}
+        assert client.get("/health").json()["status"] == "ok"

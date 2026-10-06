@@ -12,7 +12,15 @@ def test_health_returns_ok():
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {
+        "status": "ok",
+        "claimLatch": {
+            "status": "advisory",
+            "mode": "advisory",
+            "profileVersion": "claimlatch-v0.2.0",
+            "engineVersion": "0.3.86",
+        },
+    }
 
 
 def test_execution_settings_require_supported_mode_and_positive_limits():

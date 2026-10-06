@@ -15,12 +15,10 @@ def test_project_request_selects_project_execution() -> None:
     assert result.reasons
 
 
-def test_calendar_and_communication_requests_select_the_matching_capability() -> None:
+def test_calendar_requests_select_the_matching_capability() -> None:
     calendar = router().select(AssistantRequest(raw_text="내일 오후 3시에 회의 일정 등록해줘"))
-    discord = router().select(AssistantRequest(raw_text="프로젝트 디스코드 방 만들어줘"))
 
     assert calendar.capability_id == "personal-secretary"
-    assert discord.capability_id == "communication"
 
 
 def test_documents_and_presence_requests_select_the_matching_capability() -> None:

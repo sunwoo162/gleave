@@ -20,7 +20,7 @@ def test_embedded_runtime_serves_health_and_stops(tmp_path):
         response = httpx.get(f"{base_url}/health", timeout=2.0)
 
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        assert response.json()["status"] == "ok"
     finally:
         stop_started = time.monotonic()
         runtime.stop()

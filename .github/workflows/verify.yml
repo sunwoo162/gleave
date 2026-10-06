@@ -34,7 +34,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force ..\..\var | Out-Null
-          python -m pytest -q --basetemp ..\..\var\pytest-ci tests\integrations tests\memory tests\coordinator\test_memory_project_flow.py tests\api\test_memory_api.py
+          python -m pytest -q --basetemp ..\..\var\pytest-ci tests\integrations tests\memory tests\trust tests\assistant tests\project_runtime tests\mobile tests\e2e tests\coordinator\test_memory_project_flow.py tests\api\test_memory_api.py
       - name: Build and test ISEOL contracts, QA, and organization
         shell: pwsh
         run: |

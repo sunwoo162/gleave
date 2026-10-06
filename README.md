@@ -1,12 +1,12 @@
-# EEEE Platform
+# Gleave
 
-One local-first open-source personal assistant platform combining:
+`Gleave` is one local-first open-source personal assistant platform combining:
 
 - EEEE: the top-level assistant that understands context and chooses the best capability or connector.
 - ISEOL: the project-execution capability that owns Agent organization, task decomposition, execution, integration, QA, and evaluation when the request is a project.
 - ClaimLatch: the global evidence-backed reliability gate for assistant claims, actions, Agent reports, release reports, and memory candidates.
 
-The user operates one EEEE application. Project creation produces one unified Project Runtime that binds local workspace, ISEOL, Calendar, Discord, GitHub, Desktop/Mobile surfaces, QA baselines, and project memory under one `projectId`. The platform runs on a local computer without a hosted login or central EEEE server; external services are optional adapters around the local core.
+The user operates one Gleave application through EEEE. Project creation produces one unified Project Runtime that binds local workspace, ISEOL, Notion documentation, Calendar, GitHub CI/code review, Desktop local hosting, Mobile remote control, QA baselines, and project memory under one `projectId`. The platform runs on a local computer without a hosted login or central EEEE server; external services are optional adapters around the local core.
 
 ## Repository layout
 
@@ -25,7 +25,7 @@ scripts                   Local repository and verification scripts
 ~~~text
 User request
   -> EEEE context, memory, and capability selection
-  -> Personal Secretary / Project Runtime / Documents / Communication / Presence
+  -> Personal Secretary / Project Runtime / Documents / Presence
   -> ISEOL Agent teams when project execution is selected
   -> independent QA and deterministic evidence
   -> ClaimLatch action/report verification
@@ -58,6 +58,8 @@ The approved redesign adds the extensible EEEE capability registry and unified P
 
 The desktop companion is an always-on-top PySide6 widget with tray hide/restore/quit behavior. EEEE owns the local API, approvals, project memory, and user-facing state; ISEOL owns Agent decomposition, Workstream/team composition, execution, handoffs, integration, QA, and evaluation.
 
+ISEOL is used as the internal project-execution Harness Coordinator. Its required project surface is GitHub CI/code review plus Notion documentation; Discord is not provisioned by the core runtime. Desktop owns execution and Mobile forwards commands/status through a paired bridge. A review result is never treated as a release approval by itself: deterministic QA and ClaimLatch must still agree on the same project revision.
+
 ## Local setup
 
 Requirements: Python 3.12+, Node.js 20+, npm, and Windows PowerShell for the helper scripts.
@@ -85,7 +87,7 @@ Run the focused unified verification, or the full EEEE suite:
 .\scripts\verify-all.ps1 -Full
 ```
 
-No hosted login or central server is required. Optional Discord, mobile, calendar, and future channel adapters connect to the local core. Never commit `.env`, credentials, runtime databases, `node_modules`, virtual environments, `dist`, or `__pycache__`.
+No hosted login or central server is required. Optional Notion, mobile, calendar, and future channel adapters connect to the local core. Never commit `.env`, credentials, runtime databases, `node_modules`, virtual environments, `dist`, or `__pycache__`.
 
 ## Upstream attribution
 

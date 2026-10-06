@@ -1,15 +1,23 @@
+import asyncio
+import json
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.api.service import ApiFlowService
+from app.assistant.models import CapabilitySelection
+from app.assistant.service import AssistantRouteResult, AssistantService
 from app.coordinator.service import Coordinator
 from app.design.references import DesignService, ReferencePack
 from app.design.visual_verify import VisualReport
 from app.integrations.contracts import ProjectBriefV1, ProjectOutcomeReportV1
 from app.memory.models import MemoryRecord
+from app.mobile.bridge import MobileBridge, MobileBridgeError
+from app.project_runtime.models import ProjectProfile
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -99,6 +107,22 @@ class DesignVerifyResponse(BaseModel):
     report: VisualReport
 
 
+class AssistantRequestPayload(BaseModel):
+    text: str = Field(min_length=1)
+    workspace: str | None = None
+
+
+class AssistantRouteResponse(AssistantRouteResult):
+    selection: CapabilitySelection
+
+
+class MobilePairPayload(BaseModel):
+    pairing_code: str = Field(alias="pairingCode", min_length=6, max_length=6)
+    device_name: str = Field(alias="deviceName", min_length=1, max_length=120)
+
+    model_config = {"populate_by_name": True}
+
+
 def build_router(coordinator: Coordinator) -> APIRouter:
     router = APIRouter()
 
@@ -148,6 +172,127 @@ def build_router(coordinator: Coordinator) -> APIRouter:
         return report.model_dump(mode="json")
 
     return router
+
+
+def build_assistant_router(service: AssistantService) -> APIRouter:
+    router = APIRouter(prefix="/api")
+
+    @router.post("/assistant/route", response_model=AssistantRouteResponse)
+    def route_assistant_request(payload: AssistantRequestPayload) -> AssistantRouteResponse:
+        try:
+            return AssistantRouteResponse.model_validate(
+                service.route(payload.text, payload.workspace).model_dump()
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/projects/{project_id}/profile", response_model=ProjectProfile)
+    def get_project_profile(project_id: str) -> ProjectProfile:
+        return service.get_project_profile(project_id)
+
+    return router
+
+
+def build_mobile_router(
+    bridge: MobileBridge,
+    assistant: AssistantService,
+    snapshot_provider: Callable[[str | None], dict[str, object]],
+) -> APIRouter:
+    """Expose the Desktop-owned remote-control contract for the Mobile client."""
+
+    router = APIRouter(prefix="/api")
+
+    @router.post("/bridge/pairing/code")
+    def issue_pairing_code(request: Request) -> dict[str, str]:
+        if request.client is not None and request.client.host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+            raise HTTPException(status_code=403, detail="Pairing codes can only be issued from Desktop")
+        try:
+            return bridge.issue_pairing_code()
+        except MobileBridgeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @router.post("/mobile/pair")
+    def pair_mobile(payload: MobilePairPayload) -> dict[str, str]:
+        try:
+            return bridge.pair(payload.pairing_code, payload.device_name)
+        except MobileBridgeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/mobile/state")
+    def mobile_state(
+        project_id: str | None = Query(default=None, alias="projectId"),
+        bridge_token: str | None = Header(default=None, alias="X-Gleave-Bridge-Token"),
+    ) -> dict[str, object]:
+        _authorize_mobile(bridge, bridge_token)
+        return snapshot_provider(project_id)
+
+    @router.post("/mobile/assistant/route", response_model=AssistantRouteResponse)
+    def mobile_assistant_route(
+        payload: AssistantRequestPayload,
+        bridge_token: str | None = Header(default=None, alias="X-Gleave-Bridge-Token"),
+    ) -> AssistantRouteResponse:
+        device = _authorize_mobile(bridge, bridge_token)
+        try:
+            result = assistant.route(payload.text, payload.workspace)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        bridge.publish(
+            "assistant.route.completed",
+            {
+                "deviceId": device["deviceId"],
+                "capabilityId": result.selection.capability_id,
+                "status": result.status,
+                "projectId": result.project_id,
+            },
+        )
+        return AssistantRouteResponse.model_validate(result.model_dump())
+
+    @router.get("/mobile/events")
+    def mobile_events(
+        cursor: int = Query(default=0, ge=0),
+        bridge_token: str | None = Header(default=None, alias="X-Gleave-Bridge-Token"),
+    ) -> dict[str, object]:
+        _authorize_mobile(bridge, bridge_token)
+        return bridge.events_after(cursor)
+
+    @router.get("/mobile/events/stream")
+    async def mobile_event_stream(
+        request: Request,
+        cursor: int = Query(default=0, ge=0),
+        bridge_token: str | None = Header(default=None, alias="X-Gleave-Bridge-Token"),
+    ) -> StreamingResponse:
+        _authorize_mobile(bridge, bridge_token)
+
+        async def generate() -> object:
+            current = cursor
+            deadline = asyncio.get_running_loop().time() + 25
+            while asyncio.get_running_loop().time() < deadline:
+                if await request.is_disconnected():
+                    break
+                batch = bridge.events_after(current)
+                events = batch["events"]
+                if events:
+                    for event in events:
+                        current = max(current, int(event["cursor"]))
+                        yield (
+                            f"id: {event['cursor']}\n"
+                            f"event: {event['kind']}\n"
+                            f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                        )
+                else:
+                    yield ": heartbeat\n\n"
+                await asyncio.sleep(0.5)
+
+        return StreamingResponse(generate(), media_type="text/event-stream")
+
+    return router
+
+
+def _authorize_mobile(bridge: MobileBridge, token: str | None) -> dict[str, str]:
+    try:
+        return bridge.authorize(token)
+    except MobileBridgeError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
 def build_api_router(flow: ApiFlowService) -> APIRouter:

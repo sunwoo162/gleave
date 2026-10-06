@@ -69,7 +69,7 @@ def test_health_route_remains_available_with_coordinator_app(tmp_path):
     response = TestClient(create_app(settings)).get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
 
 
 def test_app_wires_github_researcher_when_token_is_configured(tmp_path):

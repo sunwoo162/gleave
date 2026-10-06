@@ -1,5 +1,5 @@
 const RUNS_PAGE_SIZE = 50;
-const RECENT_RUN_FILTERS_STORAGE_KEY = "oss-product-builder.recent-run-filters";
+const RECENT_RUN_FILTERS_STORAGE_KEY = "gleave.recent-run-filters";
 const RECENT_RUN_STATUSES = new Set(["all", "created", "running", "completed", "failed", "unavailable"]);
 const RECENT_RUN_PAGE_SIZES = new Set(["25", "50", "100"]);
 const RECENT_RUN_SORTS = new Set(["newest", "oldest"]);
@@ -436,7 +436,7 @@ function renderSnapshotEvidence(snapshot) {
 
 function rememberRequest(requestId) {
   try {
-    localStorage.setItem("oss-product-builder.request-id", requestId);
+    localStorage.setItem("gleave.request-id", requestId);
   } catch (_error) {
     // Local storage is an optional convenience; the API flow remains usable.
   }
@@ -444,8 +444,8 @@ function rememberRequest(requestId) {
 
 function forgetRequest(requestId) {
   try {
-    if (!requestId || localStorage.getItem("oss-product-builder.request-id") === requestId) {
-      localStorage.removeItem("oss-product-builder.request-id");
+    if (!requestId || localStorage.getItem("gleave.request-id") === requestId) {
+      localStorage.removeItem("gleave.request-id");
     }
   } catch (_error) {
     // Local storage is an optional convenience; the API flow remains usable.
@@ -758,7 +758,7 @@ $("#restore-form").addEventListener("submit", async (event) => {
 });
 
 try {
-const savedRequestId = localStorage.getItem("oss-product-builder.request-id");
+const savedRequestId = localStorage.getItem("gleave.request-id");
   if (savedRequestId) {
     $("#restore-request-id").value = savedRequestId;
     restoreRequest(savedRequestId, true);

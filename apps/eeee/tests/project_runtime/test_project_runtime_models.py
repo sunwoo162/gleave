@@ -19,11 +19,11 @@ def test_project_profile_binds_every_project_surface_under_one_identity() -> Non
         qa_baseline_ids=["qa-1"],
         connectors=[
             ConnectorBinding(
-                connector_id="discord",
+                connector_id="notion",
                 state="awaiting_configuration",
-                intent="create project channels",
-                idempotency_key="project-1:rev-1:discord",
-                reason="Discord token is not configured",
+                intent="store project documentation",
+                idempotency_key="project-1:rev-1:notion",
+                reason="Notion token is not configured",
             )
         ],
         provenance={"goal": "user", "schedule": "inferred"},

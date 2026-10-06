@@ -16,26 +16,26 @@ ProvisioningStatus = Literal["ready", "awaiting_configuration", "blocked"]
 
 
 class ConnectorBinding(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
-    connector_id: str = Field(min_length=1)
+    connector_id: str = Field(min_length=1, alias="connectorId")
     state: ConnectorState
     intent: str = Field(min_length=1)
-    idempotency_key: str = Field(min_length=1)
-    external_ref: str | None = None
+    idempotency_key: str = Field(min_length=1, alias="idempotencyKey")
+    external_ref: str | None = Field(default=None, alias="externalRef")
     reason: str | None = None
 
 
 class ProjectProfile(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
     schema_version: int = 1
-    project_id: str = Field(min_length=1)
-    project_revision: str = Field(min_length=1)
+    project_id: str = Field(min_length=1, alias="projectId")
+    project_revision: str = Field(min_length=1, alias="projectRevision")
     goal: str = Field(min_length=1)
     scope: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
-    acceptance_criteria: list[str] = Field(default_factory=list)
+    acceptance_criteria: list[str] = Field(default_factory=list, alias="acceptanceCriteria")
     workspace: str = Field(min_length=1)
     capabilities: list[str] = Field(min_length=1)
     schedule: dict[str, Any] = Field(default_factory=dict)

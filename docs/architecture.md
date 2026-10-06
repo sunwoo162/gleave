@@ -2,7 +2,9 @@
 
 The canonical architecture is [`docs/architecture/eeee-platform.md`](architecture/eeee-platform.md).
 
-`eeee-platform` is one local-first project. EEEE is the top-level personal assistant, ISEOL is the project-execution capability selected by EEEE, and ClaimLatch plus deterministic QA form the global trust boundary. The user operates one local EEEE application; Calendar, Discord, GitHub, Desktop, and Mobile are connector surfaces around the same Project Runtime.
+`Gleave` is the one local-first project. EEEE is the top-level personal assistant, ISEOL is the project-execution capability selected by EEEE, and ClaimLatch plus deterministic QA form the global trust boundary. The user operates one local Gleave application; Notion, Calendar, GitHub, Desktop, and Mobile are connector surfaces around the same Project Runtime. Discord is not part of the core workflow.
+
+ISEOL is the internal project-execution Harness Coordinator. The core runtime provisions Notion documentation and GitHub CI/code-review state; it does not create Discord project spaces. QA and ClaimLatch remain independent release gates.
 
 The detailed design and implementation plan are:
 
@@ -799,8 +801,8 @@ EEEE
 │  └─ 필요 시 OpenAI-compatible Adapter
 │
 └─ Optional Adapters
-   ├─ Discord
-   ├─ GitHub
+   ├─ Notion
+   ├─ GitHub CI / Code Review
    ├─ Calendar
    ├─ Email
    └─ Browser
@@ -831,9 +833,9 @@ EEEE
 - 로컬 AI Chat·AI Team 런타임
 - Desktop Agent와 ChatGPT Web Adapter
 - Workspace·Evidence·Portfolio 개념
-- Discord·웹 Control Plane 어댑터
+- Notion·GitHub·웹 Control Plane 어댑터
 
-최종 통합에서는 Discord나 원격 웹 기능을 핵심으로 두지 않고, ISEOL의 Agent 조직·실행·증거 기능을 EEEE 아래의 로컬 Harness 계층으로 사용한다.
+최종 통합에서는 원격 협업 채널을 핵심으로 두지 않고, ISEOL의 Agent 조직·실행·증거 기능을 EEEE 아래의 로컬 Harness 계층으로 사용한다.
 
 ### 10.3 ClaimLatch 현재 상태
 

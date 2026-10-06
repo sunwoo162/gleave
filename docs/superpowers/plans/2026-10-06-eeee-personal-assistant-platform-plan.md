@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Reframe the aggregate repository as one local-first EEEE assistant platform with an extensible capability router, a unified Project Runtime, explicit connector plans, and a global ClaimLatch/QA trust boundary.
+**Goal:** Reframe the aggregate repository as the single local-first Gleave project, with EEEE as its extensible assistant kernel, a unified Project Runtime, explicit connector plans, and a global ClaimLatch/QA trust boundary.
 
-**Architecture:** Keep `apps/eeee` as the local EEEE kernel and introduce focused `assistant`, `project_runtime`, and `trust` packages. Preserve the current coordinator and ISEOL execution behavior behind the new project capability, while representing Calendar, Discord, GitHub, Desktop, and Mobile as connector ports whose local planning state is durable even when external credentials are absent. Keep ClaimLatch and deterministic QA as separate gates that must agree on project identity and revision before release or memory promotion.
+**Architecture:** Keep `apps/eeee` as the local EEEE kernel and introduce focused `assistant`, `project_runtime`, and `trust` packages. Preserve the current coordinator and ISEOL execution behavior behind the new project capability, while representing Notion, Calendar, GitHub CI/Review, Desktop, and Mobile as connector ports whose local planning state is durable even when external credentials are absent. Keep ClaimLatch and deterministic QA as separate gates that must agree on project identity and revision before release or memory promotion.
 
 **Tech Stack:** Python 3.12, FastAPI, Pydantic v2, SQLite, TypeScript/Node 20 for ISEOL and the ClaimLatch adapter, existing versioned JSON contracts, pytest, and Node's built-in test runner. No new runtime dependency.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- `eeee-platform` is the single installable project; EEEE, ISEOL, and ClaimLatch remain internal modules with explicit boundaries.
+- `Gleave` is the single installable project; EEEE, ISEOL, and ClaimLatch remain internal modules with explicit boundaries.
 - EEEE is the top-level personal assistant and chooses capabilities; ISEOL is selected for project execution and owns project Agent organization.
 - Project creation produces one durable `projectId` and binds profile, workspace, ISEOL, connector plans, client surfaces, QA baselines, and project memory scope.
 - External connectors must report `planned` or `awaiting_configuration` when credentials or a provider are unavailable; they must never claim an external side effect occurred.
@@ -25,7 +25,7 @@
 
 - A request with no explicit project keyword still routes correctly from intent and does not silently create a project.
 - Repeated provisioning is idempotent for the same project and revision and does not duplicate connector plans.
-- Missing Calendar/Discord/GitHub credentials produce truthful non-success states and retain the requested intent.
+- Missing Notion/Calendar/GitHub credentials produce truthful non-success states and retain the requested intent.
 - A stale project revision cannot be used to create a trusted connector action, release, or promoted memory.
 - ClaimLatch unavailability is fail-closed for external side effects while local planning remains inspectable.
 
@@ -77,7 +77,7 @@
 - Produces `CapabilityDescriptor`, `CapabilityMatch`, `AssistantRequest`, `AssistantContext`, `CapabilityPlan`, `CapabilityResult`, and `CapabilitySelection` Pydantic models.
 - Produces `CapabilityRegistry.register(descriptor, handler)`, `CapabilityRegistry.list()`, and `CapabilityRegistry.resolve(capability_id)`.
 - Produces `CapabilityRouter.select(request: AssistantRequest) -> CapabilitySelection`.
-- Produces `build_default_registry() -> CapabilityRegistry` with `personal-secretary`, `project-execution`, `knowledge-documents`, `communication`, and `presence` descriptors.
+- Produces `build_default_registry() -> CapabilityRegistry` with `personal-secretary`, `project-execution`, `knowledge-documents`, and `presence` descriptors.
 
 - [ ] **Step 1: Write failing model and registry tests**
 
@@ -95,7 +95,7 @@
 
 - [ ] **Step 4: Write failing router tests**
 
-  Pin these routes: Korean/English project requests to `project-execution`, calendar/reminder requests to `personal-secretary`, Discord/team requests to `communication`, document requests to `knowledge-documents`, desktop/mobile widget requests to `presence`, and ambiguous requests to a deterministic `needs_clarification` result. Explicit `requested_capability` must override keyword scoring only when the capability is registered.
+  Pin these routes: Korean/English project requests to `project-execution`, calendar/reminder requests to `personal-secretary`, document requests to `knowledge-documents`, desktop/mobile widget requests to `presence`, and ambiguous requests to a deterministic `needs_clarification` result. Explicit `requested_capability` must override keyword scoring only when the capability is registered.
 
 - [ ] **Step 5: Run the router tests to verify they fail**
 
@@ -148,7 +148,7 @@
 
 - [ ] **Step 3: Implement project runtime models and connector ports**
 
-  Provide planning-only built-ins for `google-calendar`, `discord`, `github`, and `desktop-mobile`. Their output must preserve the intended action and return `awaiting_configuration` when the provider is not configured; no connector may claim completion without a provider acknowledgement.
+  Provide planning-only built-ins for `notion`, `google-calendar`, `github`, `iseol-runtime`, `desktop`, and `mobile-bridge`. Their output must preserve the intended action and return `awaiting_configuration` when the provider is not configured; no connector may claim completion without a provider acknowledgement.
 
 - [ ] **Step 4: Write failing persistence and provisioner tests**
 
@@ -194,7 +194,7 @@
 
 - [ ] **Step 1: Write failing service and API tests**
 
-  Pin that a project request is selected as `project-execution`, creates one project/profile/workspace, exposes connector plans, and does not report Calendar or Discord as completed when they are not configured. Pin that a reminder request returns `personal-secretary` without creating a project.
+  Pin that a project request is selected as `project-execution`, creates one project/profile/workspace, exposes connector plans, and does not report Notion or Calendar as completed when they are not configured. Pin that a reminder request returns `personal-secretary` without creating a project.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -277,6 +277,10 @@
 **Files:**
 - Modify: `integrations/contracts/README.md`
 - Modify: `docs/operations/local-runtime.md`
+- Create: `apps/desktop/README.md`
+- Create: `apps/mobile/README.md`
+- Create: `apps/eeee/app/mobile/bridge.py`
+- Create: `apps/eeee/tests/mobile/test_bridge.py`
 - Modify: `scripts/verify-all.ps1`
 - Modify: `.github/workflows/verify.yml`
 - Create: `apps/eeee/tests/e2e/test_assistant_project_runtime.py`
@@ -285,10 +289,11 @@
 - Documents the Project Runtime profile and connector states for ISEOL and adapter consumers.
 - Makes the focused verification command exercise assistant, project runtime, trust, and existing ISEOL/ClaimLatch gates.
 - Produces one end-to-end test from natural-language project request to durable profile and truthful connector statuses.
+- Produces a paired Desktop↔Mobile bridge for remote assistant commands and live event streaming without moving state or secrets to Mobile.
 
 - [ ] **Step 1: Write the end-to-end test**
 
-  Start the local FastAPI app with no external credentials, route a project request, assert one project/profile/workspace, assert ISEOL is selected, assert Calendar/Discord/GitHub are not falsely completed, and assert the profile survives app restart.
+  Start the local FastAPI app with no external credentials, route a project request, assert one project/profile/workspace, assert ISEOL is selected, assert Notion/Calendar/GitHub are not falsely completed, and assert the profile survives app restart.
 
 - [ ] **Step 2: Run the end-to-end test to verify it fails**
 

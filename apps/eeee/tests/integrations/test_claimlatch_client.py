@@ -75,6 +75,7 @@ def test_client_persists_claimlatch_audit_metadata_and_is_idempotent(tmp_path) -
         audit_store=store,
         policy_version="policy-v2",
         adapter_version="adapter-v3",
+        claim_latch_profile_version="claimlatch-v0.2.0",
         claim_latch_version="0.3.86",
         current_revision_resolver=lambda _project_id: "rev-1",
     )
@@ -89,6 +90,7 @@ def test_client_persists_claimlatch_audit_metadata_and_is_idempotent(tmp_path) -
     assert audit.payload_hash
     assert audit.policy_version == "policy-v2"
     assert audit.adapter_version == "adapter-v3"
+    assert audit.claim_latch_profile_version == "claimlatch-v0.2.0"
     assert audit.claim_latch_version == "0.3.86"
     assert audit.request_payload == payload
 

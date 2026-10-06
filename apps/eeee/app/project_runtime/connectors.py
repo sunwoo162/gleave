@@ -45,24 +45,34 @@ def build_default_connectors(
 ) -> dict[str, ProjectConnector]:
     configured_ids = configured or set()
     return {
+        "notion": PlanningConnector(
+            "notion",
+            "store the project specification, decisions, and execution log",
+            configured="notion" in configured_ids,
+        ),
         "google-calendar": PlanningConnector(
             "google-calendar",
             "create milestones and deadlines",
             configured="google-calendar" in configured_ids,
         ),
-        "discord": PlanningConnector(
-            "discord",
-            "create project category and channels",
-            configured="discord" in configured_ids,
-        ),
         "github": PlanningConnector(
             "github",
-            "bind repository and project history",
+            "bind repositories, CI, code review, and project history",
             configured="github" in configured_ids,
         ),
-        "desktop-mobile": PlanningConnector(
-            "desktop-mobile",
-            "publish the project surface to local clients",
+        "iseol-runtime": PlanningConnector(
+            "iseol-runtime",
+            "run Agent decomposition, integration, independent QA, and evaluation",
+            local_only=True,
+        ),
+        "desktop": PlanningConnector(
+            "desktop",
+            "run the local EEEE control plane and desktop widget",
+            local_only=True,
+        ),
+        "mobile-bridge": PlanningConnector(
+            "mobile-bridge",
+            "pair mobile remote control and stream live project status",
             local_only=True,
         ),
     }

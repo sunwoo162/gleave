@@ -7,6 +7,9 @@ from typing import Callable
 from uuid import uuid4
 
 from app.agent.protocol import AgentRequest, AgentResult, AgentRuntime
+from app.assistant.models import AssistantRequest
+from app.assistant.registry import build_default_registry
+from app.assistant.router import CapabilityRouter
 from app.config import Settings
 from app.coordinator.service import Coordinator
 from app.domain.errors import ApprovalError
@@ -14,6 +17,7 @@ from app.domain.models import CandidateScore, Decision, RequestBrief, RequestSna
 from app.storage.sqlite import SQLiteStore
 from app.workflow.planner import WorkPlan, build_work_plan
 from app.workspace.artifacts import WorkspaceArtifactWriter
+from app.project_runtime.provisioner import ProjectProvisioner
 
 
 class ApiFlowService:
@@ -32,6 +36,8 @@ class ApiFlowService:
         clock: Callable[[], datetime] | None = None,
         lease_seconds: int = LEASE_SECONDS,
         heartbeat_interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS,
+        capability_router: CapabilityRouter | None = None,
+        project_provisioner: ProjectProvisioner | None = None,
     ) -> None:
         self.coordinator = coordinator
         self.store = store
@@ -41,8 +47,14 @@ class ApiFlowService:
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self.lease_seconds = lease_seconds
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
+        self.capability_router = capability_router or CapabilityRouter(build_default_registry())
+        self.project_provisioner = project_provisioner or ProjectProvisioner(store)
 
     def create_request(self, text: str, workspace: str | None) -> tuple[str, RequestBrief, str]:
+        # `/api/requests` is the legacy project workbench endpoint. The new
+        # `/api/assistant/route` endpoint is the canonical intent-aware entrypoint;
+        # this compatibility path keeps accepting arbitrary project descriptions.
+        self.capability_router.select(AssistantRequest(raw_text=text))
         project_id = f"api-{uuid4().hex}"
         workspace_path = self._resolve_workspace(workspace, project_id)
         workspace_path.mkdir(parents=True, exist_ok=True)
@@ -52,6 +64,13 @@ class ApiFlowService:
             raise RuntimeError("Created request did not produce a request ID")
         request_id = state.request_id
         self.store.save_request_context(request_id, project_id, str(workspace_path))
+        project_brief = self.coordinator.build_project_brief(project_id, request_id)
+        self.project_provisioner.provision(
+            self.store.get_project(project_id),
+            self.store.get_request(request_id),
+            memory_ids=project_brief.retrieved_memory_ids,
+            qa_baseline_ids=project_brief.qa_baseline_ids,
+        )
         run = self.store.create_run(request_id, str(workspace_path))
         return request_id, self.store.get_request(request_id), run.id
 

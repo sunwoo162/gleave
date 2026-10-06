@@ -492,7 +492,7 @@ def test_request_api_serves_local_ui_and_missing_run_is_not_found(tmp_path):
 
     page = client.get("/")
     assert page.status_code == 200
-    assert "OSS Product Builder" in page.text
+    assert "Gleave" in page.text
     assert "/static/app.js" in page.text
     assert '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />' in page.text
     assert "Restore saved request" in page.text

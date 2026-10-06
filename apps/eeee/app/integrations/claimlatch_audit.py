@@ -28,6 +28,9 @@ class ClaimLatchAuditRecord(BaseModel):
     policy_version: str = Field(min_length=1)
     adapter_version: str = Field(min_length=1)
     claim_latch_version: str = Field(min_length=1)
+    claim_latch_profile_version: str = Field(
+        default="claimlatch-v0.2.0", min_length=1
+    )
     request_payload: dict[str, Any]
     envelope: dict[str, Any]
     created_at: datetime
@@ -62,6 +65,7 @@ class ClaimLatchAuditStore:
                     policy_version TEXT NOT NULL,
                     adapter_version TEXT NOT NULL,
                     claim_latch_version TEXT NOT NULL,
+                    claim_latch_profile_version TEXT NOT NULL DEFAULT 'claimlatch-v0.2.0',
                     request_payload_json TEXT NOT NULL,
                     envelope_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
@@ -73,6 +77,16 @@ class ClaimLatchAuditStore:
                     ON claimlatch_audits (claim_latch_report_id);
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(claimlatch_audits)")
+            }
+            if "claim_latch_profile_version" not in columns:
+                connection.execute(
+                    "ALTER TABLE claimlatch_audits ADD COLUMN "
+                    "claim_latch_profile_version TEXT NOT NULL "
+                    "DEFAULT 'claimlatch-v0.2.0'"
+                )
 
     def save(self, record: ClaimLatchAuditRecord) -> ClaimLatchAuditRecord:
         with self._connect() as connection:
@@ -88,6 +102,8 @@ class ClaimLatchAuditStore:
                     current.policy_version == record.policy_version
                     and current.adapter_version == record.adapter_version
                     and current.claim_latch_version == record.claim_latch_version
+                    and current.claim_latch_profile_version
+                    == record.claim_latch_profile_version
                 )
                 same_result = (
                     current.decision == record.decision
@@ -109,8 +125,9 @@ class ClaimLatchAuditStore:
                     "INSERT INTO claimlatch_audits ("
                     "audit_id, subject_id, project_id, project_revision, subject_type, decision, "
                     "claim_latch_report_id, receipt_id, payload_hash, policy_version, adapter_version, "
-                    "claim_latch_version, request_payload_json, envelope_json, created_at"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "claim_latch_version, claim_latch_profile_version, request_payload_json, "
+                    "envelope_json, created_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.audit_id,
                         record.subject_id,
@@ -124,6 +141,7 @@ class ClaimLatchAuditStore:
                         record.policy_version,
                         record.adapter_version,
                         record.claim_latch_version,
+                        record.claim_latch_profile_version,
                         json.dumps(record.request_payload, ensure_ascii=False, sort_keys=True),
                         json.dumps(record.envelope, ensure_ascii=False, sort_keys=True),
                         _iso(record.created_at),
@@ -175,6 +193,7 @@ def _record_from_row(row: sqlite3.Row) -> ClaimLatchAuditRecord:
         policy_version=row["policy_version"],
         adapter_version=row["adapter_version"],
         claim_latch_version=row["claim_latch_version"],
+        claim_latch_profile_version=row["claim_latch_profile_version"],
         request_payload=json.loads(row["request_payload_json"]),
         envelope=json.loads(row["envelope_json"]),
         created_at=row["created_at"],

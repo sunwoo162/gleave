@@ -17,4 +17,4 @@ def test_release_docs_describe_install_test_security_and_manual_release():
     assert "python -m pytest" in content or "python -m pytest" in readme
     assert "security" in content.lower()
     assert "manual" in content.lower()
-    assert "OSS Product Builder" in content
+    assert "Gleave" in content or "Gleave" in readme

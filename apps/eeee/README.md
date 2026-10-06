@@ -1,6 +1,6 @@
-# OSS Product Builder
+# Gleave
 
-OSS Product Builder is a local-first FastAPI workbench for turning a product request into an evidence-backed OSS comparison, an explicit approval, and a recorded workspace run. The browser UI is served by the local process and uses no third-party CDN assets.
+Gleave is a local-first FastAPI workbench and personal assistant platform. EEEE routes user intent, ISEOL executes project work, and ClaimLatch verifies claims and actions before release or memory promotion. The browser UI is served by the local process and uses no third-party CDN assets.
 
 This repository is released under the MIT License and is intended for
 self-hosted use. It is not a hosted multi-tenant service.
@@ -25,7 +25,7 @@ python -m app.main
 After installation, the equivalent console command is:
 
 ```powershell
-oss-product-builder
+gleave
 ```
 
 Open <http://127.0.0.1:8000/>. The health endpoint is <http://127.0.0.1:8000/health>.
@@ -59,8 +59,8 @@ Copy `.env.example` to `.env` when environment configuration is needed.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `APP_NAME` | FastAPI application title | `OSS Product Builder` |
-| `DATA_DIR` | SQLite state directory | `.oss-builder` |
+| `APP_NAME` | FastAPI application title | `Gleave` |
+| `DATA_DIR` | SQLite state directory | `.gleave` |
 | `WORKSPACE_ROOT` | Allowed root for request workspaces | `workspaces` |
 | `GITHUB_TOKEN` | Optional GitHub API token for live research | empty |
 | `LLM_BASE_URL` | Optional OpenHands-compatible model endpoint | empty |
