@@ -64,3 +64,23 @@ def test_client_supports_canonical_eeee_desktop_contract(monkeypatch):
             {"timeout": 5.0},
         ),
     ]
+
+
+def test_client_can_open_the_project_map(monkeypatch):
+    requests = []
+
+    def request(method, url, **kwargs):
+        requests.append((method, url, kwargs))
+        return httpx.Response(200, json={"projectId": "project-1", "nodes": []})
+
+    monkeypatch.setattr(httpx, "request", request)
+    client = PetApiClient("http://127.0.0.1:8123")
+
+    assert client.open_project("project-1")["projectId"] == "project-1"
+    assert requests == [
+        (
+            "GET",
+            "http://127.0.0.1:8123/api/projects/project-1/map",
+            {"timeout": 5.0},
+        )
+    ]

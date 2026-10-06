@@ -4,6 +4,9 @@ const RECENT_RUN_STATUSES = new Set(["all", "created", "running", "completed", "
 const RECENT_RUN_PAGE_SIZES = new Set(["25", "50", "100"]);
 const RECENT_RUN_SORTS = new Set(["newest", "oldest"]);
 const state = { requestId: null, requestSelectionId: 0, runId: null, candidates: [], selectedCandidates: null, decisionEvents: [], runs: [], allRuns: [], approved: false, hasMoreRuns: false, hasLoadedRuns: false, loadingRuns: false, runsRequestId: 0, runsError: null, totalRuns: 0, runsUpdatedAt: null, runsPageSize: RUNS_PAGE_SIZE, runsSort: "newest" };
+let projectMapProjectId = null;
+let projectMapCursor = 0;
+let projectMapTimer = null;
 const pendingApprovalRequestIds = new Set();
 const pendingResearchRequestIds = new Set();
 const pendingRunExecutionIds = new Set();
@@ -210,6 +213,42 @@ function applyLanguage(language) {
   }
   $("#recent-run-sort option[value=newest]").textContent = uiText("newest");
   $("#recent-run-sort option[value=oldest]").textContent = uiText("oldest");
+  const assistant = currentLanguage === "ko"
+    ? {
+        heading: "무엇을 해드릴까요?", status: "대기 중", label: "만들고 싶은 것을 한 문장으로 적어주세요",
+        placeholder: "예: Todo 앱 만들어줘", button: "만들기", map: "프로젝트 진행 맵",
+        project: ["프로젝트 만들기", "한 문장으로 앱을 만들고 진행 현황을 확인합니다."],
+        secretary: ["일정·리마인더", "개인 일정과 다음 할 일을 정리합니다."],
+        knowledge: ["기억·문서", "검증된 기록과 문서를 찾아 연결합니다."],
+      }
+    : {
+        heading: "What should I do for you?", status: "Ready", label: "Describe what you want in one sentence",
+        placeholder: "Example: Build a Todo app", button: "Build", map: "Project progress map",
+        project: ["Build a project", "Create an app from one sentence and follow its progress."],
+        secretary: ["Schedule & reminders", "Organize personal events and next actions."],
+        knowledge: ["Memory & documents", "Find and connect verified records and documents."],
+      };
+  const assistantHeading = $("#assistant-heading");
+  if (assistantHeading) assistantHeading.textContent = assistant.heading;
+  const assistantStatus = $("#assistant-status");
+  if (assistantStatus) assistantStatus.textContent = assistant.status;
+  const requestLabel = $("label[for=project-request]");
+  if (requestLabel) requestLabel.textContent = assistant.label;
+  const projectInput = $("#project-request");
+  if (projectInput) projectInput.placeholder = assistant.placeholder;
+  const projectButton = $("#project-request-form button");
+  if (projectButton) projectButton.textContent = assistant.button;
+  const mapHeading = $("#project-map-heading");
+  if (mapHeading) mapHeading.textContent = assistant.map;
+  const cards = document.querySelectorAll(".capability-card");
+  [assistant.project, assistant.secretary, assistant.knowledge].forEach((copy, index) => {
+    const card = cards[index];
+    if (!card) return;
+    const strong = card.querySelector("strong");
+    const description = card.querySelector("span");
+    if (strong) strong.textContent = copy[0];
+    if (description) description.textContent = copy[1];
+  });
 }
 
 function initializeLanguage() {
@@ -278,6 +317,93 @@ async function requestJson(url, options = {}) {
   const body = await response.json();
   if (!response.ok) throw body;
   return body;
+}
+
+function renderProjectMapDetails(node) {
+  const details = $("#project-map-details");
+  details.replaceChildren();
+  if (!node) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "작업 노드를 선택하면 커밋, QA, ClaimLatch, 파일과 문제 해결 기록이 표시됩니다.";
+    details.append(empty);
+    return;
+  }
+  const title = document.createElement("h3");
+  title.textContent = node.title;
+  const status = document.createElement("p");
+  status.className = `map-detail-status ${node.status}`;
+  status.textContent = `${node.role} · ${node.status}`;
+  const facts = document.createElement("dl");
+  const fields = [
+    ["현재 커밋", node.currentCommit || "기록 없음"],
+    ["변경 파일", (node.changedFiles || []).join(", ") || "기록 없음"],
+    ["ClaimLatch", node.claimLatchStatus || "unavailable"],
+    ["QA", node.qaStatus || "unavailable"],
+    ["증거", (node.evidenceIds || []).join(", ") || "기록 없음"],
+    ["트러블슈팅", (node.troubleshootingIds || []).join(", ") || "기록 없음"],
+  ];
+  fields.forEach(([label, value]) => {
+    const term = document.createElement("dt");
+    term.textContent = label;
+    const description = document.createElement("dd");
+    description.textContent = value;
+    facts.append(term, description);
+  });
+  details.append(title, status, facts);
+}
+
+function renderProjectMap(snapshot) {
+  projectMapCursor = snapshot.cursor || 0;
+  const container = $("#project-map-nodes");
+  const active = new Set(snapshot.currentNodeIds || []);
+  container.replaceChildren();
+  (snapshot.nodes || []).forEach((node) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = `project-map-node ${node.status}${active.has(node.id) ? " active" : ""}`;
+    card.dataset.nodeId = node.id;
+    const heading = document.createElement("strong");
+    heading.textContent = node.title;
+    const meta = document.createElement("span");
+    meta.textContent = `${node.role} · ${node.status}`;
+    card.append(heading, meta);
+    card.addEventListener("click", () => renderProjectMapDetails(node));
+    container.append(card);
+  });
+  $("#project-map-summary").textContent = `${snapshot.title} · revision ${snapshot.projectRevision} · ${snapshot.nodes.length}개 작업 · cursor ${projectMapCursor}`;
+  $("#project-map-status").textContent = snapshot.warnings?.length
+    ? `확인 필요: ${snapshot.warnings.join("; ")}`
+    : "실시간 기록 반영됨";
+  if (active.size) renderProjectMapDetails((snapshot.nodes || []).find((node) => active.has(node.id)));
+}
+
+async function refresh_project_map(projectId) {
+  if (!projectId || projectId !== projectMapProjectId) return;
+  try {
+    const snapshot = await requestJson(`/api/projects/${projectId}/map`);
+    if (projectId !== projectMapProjectId) return;
+    renderProjectMap(snapshot);
+  } catch (error) {
+    $("#project-map-status").textContent = error?.detail || "프로젝트 맵을 불러오지 못했습니다.";
+  }
+}
+
+function open_project(projectId) {
+  projectMapProjectId = projectId;
+  projectMapCursor = 0;
+  $("#project-map").hidden = false;
+  $("#project-map").scrollIntoView({ behavior: "smooth", block: "start" });
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("project", projectId);
+    window.history.replaceState({}, "", url);
+  } catch (_error) {
+    // The project remains open even when the browser history API is unavailable.
+  }
+  refresh_project_map(projectId);
+  if (projectMapTimer) clearInterval(projectMapTimer);
+  projectMapTimer = setInterval(() => refresh_project_map(projectId), 1500);
 }
 
 function renderCandidates() {
@@ -716,6 +842,46 @@ function applySnapshot(snapshot) {
   rememberRequest(state.requestId);
 }
 
+document.querySelectorAll(".capability-card").forEach((card) => {
+  card.addEventListener("click", () => {
+    document.querySelectorAll(".capability-card").forEach((item) => item.classList.remove("selected"));
+    card.classList.add("selected");
+    $("#project-request").focus();
+  });
+});
+
+$("#project-request-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const text = $("#project-request").value.trim();
+  if (!text) return;
+  const status = $("#assistant-status");
+  const requestStatus = $("#project-request-status");
+  status.textContent = "분석 중";
+  status.className = "status busy";
+  requestStatus.textContent = "EEEE가 프로젝트 도구를 준비하고 있습니다…";
+  try {
+    const result = await requestJson("/api/assistant/route", {
+      method: "POST",
+      body: JSON.stringify({ text, workspace: $("#project-workspace").value || null }),
+    });
+    if (result.project_id) {
+      requestStatus.textContent = `${result.message} · ${result.project_id}`;
+      status.textContent = "프로젝트 생성됨";
+      status.className = "status success";
+      open_project(result.project_id);
+    } else {
+      requestStatus.textContent = result.message || "추가 확인이 필요합니다.";
+      status.textContent = result.status || "확인 필요";
+      status.className = "status";
+    }
+  } catch (error) {
+    const message = error?.detail || error?.message || "프로젝트 요청에 실패했습니다.";
+    status.textContent = "실패";
+    status.className = "status error";
+    requestStatus.textContent = message;
+  }
+});
+
 $("#request-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const selectionId = beginRequestSelection();
@@ -984,6 +1150,13 @@ const savedRequestId = localStorage.getItem("gleave.request-id");
   }
 } catch (_error) {
   // Local storage is an optional convenience; the API flow remains usable.
+}
+
+try {
+  const initialProject = new URL(window.location.href).searchParams.get("project");
+  if (initialProject) open_project(initialProject);
+} catch (_error) {
+  // A project can still be opened from the assistant form.
 }
 
 restoreRecentRunFilters();

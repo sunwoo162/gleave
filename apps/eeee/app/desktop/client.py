@@ -47,6 +47,12 @@ class PetApiClient:
             payload["workspace"] = workspace
         return self._request("POST", "/api/assistant/route", json=payload)
 
+    def open_project(self, project_id: str) -> dict[str, object]:
+        """Load the durable organization map for a project in the Desktop view."""
+        if not project_id.strip():
+            raise ValueError("project_id is required")
+        return self._request("GET", f"/api/projects/{project_id}/map")
+
     def issue_pairing_code(self) -> dict[str, object]:
         return self._request("POST", "/api/desktop/pairing/code")
 

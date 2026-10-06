@@ -27,6 +27,51 @@
         <p>EEEE가 상황에 맞는 도구를 선택해 아이디어를 검증된 실행으로 나눠 처리합니다.</p>
       </header>
 
+      <section class="panel assistant-surface" aria-labelledby="assistant-heading">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">EEEE ASSISTANT</p>
+            <h2 id="assistant-heading">무엇을 해드릴까요?</h2>
+          </div>
+          <span id="assistant-status" class="status" role="status" aria-live="polite">대기 중</span>
+        </div>
+        <div id="capability-cards" class="capability-cards" aria-label="사용 가능한 기능">
+          <button class="capability-card selected" type="button" data-capability="project-execution">
+            <strong>프로젝트 만들기</strong><span>한 문장으로 앱을 만들고 진행 현황을 확인합니다.</span>
+          </button>
+          <button class="capability-card" type="button" data-capability="personal-secretary">
+            <strong>일정·리마인더</strong><span>개인 일정과 다음 할 일을 정리합니다.</span>
+          </button>
+          <button class="capability-card" type="button" data-capability="knowledge-documents">
+            <strong>기억·문서</strong><span>검증된 기록과 문서를 찾아 연결합니다.</span>
+          </button>
+        </div>
+        <form id="project-request-form" class="project-request-form">
+          <label for="project-request">만들고 싶은 것을 한 문장으로 적어주세요</label>
+          <div class="project-request-row">
+            <input id="project-request" type="text" required placeholder="예: Todo 앱 만들어줘" />
+            <button type="submit">만들기</button>
+          </div>
+          <input id="project-workspace" type="hidden" />
+        </form>
+        <p id="project-request-status" class="muted" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="project-map" class="panel project-map-panel" aria-labelledby="project-map-heading" hidden>
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">PROJECT RUNTIME</p>
+            <h2 id="project-map-heading">프로젝트 진행 맵</h2>
+          </div>
+          <span id="project-map-status" class="status" role="status" aria-live="polite">불러오는 중</span>
+        </div>
+        <div id="project-map-summary" class="project-map-summary"></div>
+        <div id="project-map-nodes" class="project-map-canvas" aria-live="polite"></div>
+        <aside id="project-map-details" class="project-map-details" aria-label="선택한 작업 상세">
+          <p class="muted">작업 노드를 선택하면 커밋, QA, ClaimLatch, 파일과 문제 해결 기록이 표시됩니다.</p>
+        </aside>
+      </section>
+
       <section class="panel" aria-labelledby="request-heading">
         <div class="panel-heading">
           <h2 id="request-heading">1. 만들고 싶은 것 설명</h2>
