@@ -13,7 +13,11 @@ export type TextVerificationHandler = (
 ) => Promise<TextVerificationResult>;
 
 export type ClaimLatchLike = {
-  verify(input: { question: string; answer: string }): Promise<ClaimLatchReport>;
+  verify(input: {
+    question: string;
+    answer: string;
+    policy?: Record<string, unknown>;
+  }): Promise<ClaimLatchReport>;
 };
 
 export type ClaimLatchAdapterServer = {
@@ -24,12 +28,15 @@ export type ClaimLatchAdapterServer = {
 export function createClaimLatchAdapterServer(options: {
   verifyText?: TextVerificationHandler;
   claimLatch?: ClaimLatchLike;
+  claimLatchPolicy?: Record<string, unknown>;
   verifyStructured?: (payload: unknown) => StructuredVerificationResult;
   maxBodyBytes?: number;
 }): ClaimLatchAdapterServer {
   const maxBodyBytes = options.maxBodyBytes ?? 1_000_000;
   const verifyText = options.verifyText ?? (
-    options.claimLatch ? createClaimLatchTextHandler(options.claimLatch) : undefined
+    options.claimLatch
+      ? createClaimLatchTextHandler(options.claimLatch, options.claimLatchPolicy)
+      : undefined
   );
   if (!verifyText) throw new Error("A ClaimLatch text verifier is required");
   const server = createServer(async (request, response) => {
@@ -143,11 +150,15 @@ function writeJson(response: ServerResponse, status: number, body: unknown): voi
   response.end(JSON.stringify(body));
 }
 
-export function createClaimLatchTextHandler(gate: ClaimLatchLike): TextVerificationHandler {
+export function createClaimLatchTextHandler(
+  gate: ClaimLatchLike,
+  policy?: Record<string, unknown>,
+): TextVerificationHandler {
   return async (input) => {
     const report = await gate.verify({
       question: input.question,
       answer: input.draft,
+      ...(policy ? { policy } : {}),
     });
     const reportId = "claimlatch-" + createHash("sha256")
       .update(JSON.stringify(report))

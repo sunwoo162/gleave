@@ -22,6 +22,7 @@ export type TextVerificationInput = {
   subjectType: string;
   question: string;
   draft: string;
+  policy?: Record<string, unknown>;
 };
 
 export type TextVerificationResult = {

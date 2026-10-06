@@ -110,10 +110,12 @@ test("structured action policy blocks path escape and external transfer", () => 
 
 test("adapter can wrap a real ClaimLatch-compatible gate", async () => {
   const server = createClaimLatchAdapterServer({
+    claimLatchPolicy: { minimumCoverage: 0.9, requireAllCriticalClaimsSupported: true },
     claimLatch: {
       verify: async (input) => {
         assert.equal(input.question, "What changed?");
         assert.equal(input.answer, "verified draft");
+        assert.deepEqual(input.policy, { minimumCoverage: 0.9, requireAllCriticalClaimsSupported: true });
         return passReport;
       },
     },
