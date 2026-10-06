@@ -12,6 +12,225 @@ let visualVerificationRequestId = 0;
 
 const $ = (selector) => document.querySelector(selector);
 
+const LANGUAGE_STORAGE_KEY = "gleave.language";
+const LANGUAGE_TEXT = {
+  ko: {
+    eyebrow: "로컬 우선 개발 워크스페이스",
+    heroDescription: "EEEE가 상황에 맞는 도구를 선택해 아이디어를 검증된 실행으로 나눠 처리합니다.",
+    language: "언어",
+    requestHeading: "1. 만들고 싶은 것 설명",
+    ready: "준비됨",
+    requestLabel: "프로젝트 요청",
+    requestPlaceholder: "예: 일정과 작업을 관리하는 웹 앱을 만들어줘",
+    workspaceLabel: "설정된 로컬 루트 안의 워크스페이스",
+    workspacePlaceholder: "선택 사항: C:\\...\\workspaces\\my-app",
+    createRequest: "요청 만들기",
+    workPlan: "작업 계획",
+    approvalHistory: "승인 기록",
+    restoreLabel: "저장된 요청 복원",
+    requestId: "요청 ID",
+    restore: "복원",
+    researchHeading: "2. 오픈소스 후보 비교",
+    research: "조사",
+    candidateHeading: "후보 근거와 선택",
+    candidateEmpty: "요청을 만들면 조사가 시작됩니다.",
+    approve: "선택한 후보 승인",
+    designHeading: "디자인 레퍼런스",
+    provenance: "출처 우선",
+    referenceUrl: "레퍼런스 URL",
+    keywords: "키워드",
+    keywordsPlaceholder: "대시보드, 사이드바, 카드",
+    targetType: "대상 유형",
+    collectPack: "레퍼런스 팩 수집",
+    visualUrl: "시각 검증용 로컬 앱 URL",
+    baseline: "기준 스크린샷 경로",
+    verifyScreenshot: "로컬 스크린샷 검증",
+    noVisualRun: "아직 시각 비교를 실행하지 않았습니다.",
+    runHeading: "3. 실행과 검증",
+    runApproved: "승인한 작업 실행",
+    retryUnavailable: "실행할 수 없던 작업 재시도",
+    recentRuns: "최근 실행",
+    loadingRuns: "저장된 실행을 불러오는 중…",
+    searchRuns: "요청 또는 실행 ID로 검색",
+    searchIds: "ID 검색",
+    filterStatus: "상태로 필터",
+    allStatuses: "모든 상태",
+    created: "생성됨",
+    running: "실행 중",
+    completed: "완료됨",
+    failed: "실패",
+    unavailable: "사용 불가",
+    createdAfter: "생성 시작 시각(현지 시간)",
+    createdBefore: "생성 종료 시각(현지 시간)",
+    pageSize: "페이지당 실행 수",
+    sortRuns: "실행 정렬",
+    newest: "최신순",
+    oldest: "오래된 순",
+    refreshRuns: "실행 새로고침",
+    clearFilters: "필터 초기화",
+    runHistory: "실행 기록",
+  },
+  en: {
+    eyebrow: "LOCAL-FIRST BUILD WORKBENCH",
+    heroDescription: "EEEE chooses the right capability for the situation and turns ideas into verified execution.",
+    language: "Language",
+    requestHeading: "1. Describe the product",
+    ready: "Ready",
+    requestLabel: "Product request",
+    requestPlaceholder: "Build a web app for...",
+    workspaceLabel: "Workspace inside the configured local root",
+    workspacePlaceholder: "Optional: C:\\...\\workspaces\\my-app",
+    createRequest: "Create request",
+    workPlan: "Work plan",
+    approvalHistory: "Approval history",
+    restoreLabel: "Restore saved request",
+    requestId: "Request ID",
+    restore: "Restore",
+    researchHeading: "2. Compare OSS candidates",
+    research: "Research",
+    candidateHeading: "Candidate evidence and selection",
+    candidateEmpty: "Create a request to begin research.",
+    approve: "Approve selected candidates",
+    designHeading: "Design references",
+    provenance: "Provenance first",
+    referenceUrl: "Reference URL",
+    keywords: "Keywords",
+    keywordsPlaceholder: "dashboard, sidebar, cards",
+    targetType: "Target type",
+    collectPack: "Collect reference pack",
+    visualUrl: "Local app URL for visual verification",
+    baseline: "Baseline screenshot path",
+    verifyScreenshot: "Verify local screenshot",
+    noVisualRun: "No visual comparison run yet.",
+    runHeading: "3. Execute and verify",
+    runApproved: "Run approved task",
+    retryUnavailable: "Retry unavailable run",
+    recentRuns: "Recent runs",
+    loadingRuns: "Loading saved runs…",
+    searchRuns: "Search by request or run ID",
+    searchIds: "Search IDs",
+    filterStatus: "Filter by status",
+    allStatuses: "All statuses",
+    created: "Created",
+    running: "Running",
+    completed: "Completed",
+    failed: "Failed",
+    unavailable: "Unavailable",
+    createdAfter: "Created after (local time)",
+    createdBefore: "Created before (local time)",
+    pageSize: "Runs per page",
+    sortRuns: "Sort runs",
+    newest: "Newest first",
+    oldest: "Oldest first",
+    refreshRuns: "Refresh runs",
+    clearFilters: "Clear filters",
+    runHistory: "Run history",
+  },
+};
+
+let currentLanguage = "ko";
+
+function uiText(key) {
+  return LANGUAGE_TEXT[currentLanguage][key] || LANGUAGE_TEXT.en[key] || key;
+}
+
+function applyLanguage(language) {
+  currentLanguage = LANGUAGE_TEXT[language] ? language : "ko";
+  if (document.documentElement) document.documentElement.lang = currentLanguage;
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage);
+  } catch (_error) {
+    // Language selection remains available when local storage is disabled.
+  }
+  const textTargets = {
+    "#eyebrow": "eyebrow",
+    ".hero > p:not(.eyebrow)": "heroDescription",
+    "#language-label": "language",
+    "#request-heading": "requestHeading",
+    "#status": "ready",
+    "label[for=request-text]": "requestLabel",
+    "label[for=workspace]": "workspaceLabel",
+    "#request-form button": "createRequest",
+    "#work-plan-heading": "workPlan",
+    "#approval-history-heading": "approvalHistory",
+    "label[for=restore-request-id]": "restoreLabel",
+    "#restore-form button": "restore",
+    "#research-heading": "researchHeading",
+    "#research-button": "research",
+    "#candidate-selection-heading": "candidateHeading",
+    "#candidates > .muted": "candidateEmpty",
+    "#approve-button": "approve",
+    "#design-heading": "designHeading",
+    "#design-status": "provenance",
+    "label[for=reference-url]": "referenceUrl",
+    "label[for=reference-keywords]": "keywords",
+    "label[for=reference-target]": "targetType",
+    "#collect-reference-button": "collectPack",
+    "label[for=visual-url]": "visualUrl",
+    "label[for=visual-baseline]": "baseline",
+    "#verify-visual-button": "verifyScreenshot",
+    "#visual-status": "noVisualRun",
+    "#run-heading": "runHeading",
+    "#run-button": "runApproved",
+    "#retry-button": "retryUnavailable",
+    "#recent-runs-heading": "recentRuns",
+    "#recent-runs-status": "loadingRuns",
+    "label[for=recent-run-search]": "searchRuns",
+    "label[for=recent-run-status-filter]": "filterStatus",
+    "label[for=recent-run-created-after]": "createdAfter",
+    "label[for=recent-run-created-before]": "createdBefore",
+    "label[for=recent-run-page-size]": "pageSize",
+    "label[for=recent-run-sort]": "sortRuns",
+    "#refresh-recent-runs": "refreshRuns",
+    "#clear-recent-run-filters": "clearFilters",
+    "#run-history-heading": "runHistory",
+  };
+  for (const [selector, key] of Object.entries(textTargets)) {
+    const element = $(selector);
+    if (element) element.textContent = uiText(key);
+  }
+  $("#request-text").placeholder = uiText("requestPlaceholder");
+  $("#workspace").placeholder = uiText("workspacePlaceholder");
+  $("#restore-request-id").placeholder = uiText("requestId");
+  $("#reference-keywords").placeholder = uiText("keywordsPlaceholder");
+  $("#recent-run-search").placeholder = uiText("searchIds");
+  $("#language-label").setAttribute("aria-label", uiText("language"));
+  $("#language-select").value = currentLanguage;
+  const statusOptions = {
+    all: "allStatuses",
+    created: "created",
+    running: "running",
+    completed: "completed",
+    failed: "failed",
+    unavailable: "unavailable",
+  };
+  for (const [value, key] of Object.entries(statusOptions)) {
+    const option = $(`#recent-run-status-filter option[value=${value}]`);
+    if (option) option.textContent = uiText(key);
+  }
+  $("#recent-run-sort option[value=newest]").textContent = uiText("newest");
+  $("#recent-run-sort option[value=oldest]").textContent = uiText("oldest");
+}
+
+function initializeLanguage() {
+  const search = typeof window !== "undefined" && typeof window.location?.search === "string"
+    ? window.location.search
+    : "";
+  const queryLanguage = search.match(/[?&]lang=(ko|en)(?:&|$)/)?.[1];
+  let savedLanguage = "ko";
+  try {
+    savedLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY) || "ko";
+  } catch (_error) {
+    // Korean is the deterministic default.
+  }
+  applyLanguage(LANGUAGE_TEXT[queryLanguage] ? queryLanguage : savedLanguage);
+  $("#language-select").addEventListener("change", (event) => {
+    applyLanguage(event.target.value);
+  });
+}
+
+initializeLanguage();
+
 function setStatus(message, kind = "") {
   const status = $("#status");
   status.textContent = message;

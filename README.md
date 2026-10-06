@@ -56,7 +56,7 @@ The first local vertical slice is implemented. The completed P0 path includes:
 
 The approved redesign adds the extensible EEEE capability registry and unified Project Runtime foundation. See [`docs/architecture/eeee-platform.md`](docs/architecture/eeee-platform.md) for the target boundary and [`docs/superpowers/plans/2026-10-06-eeee-personal-assistant-platform-plan.md`](docs/superpowers/plans/2026-10-06-eeee-personal-assistant-platform-plan.md) for the implementation sequence.
 
-The desktop companion is an always-on-top PySide6 widget with tray hide/restore/quit behavior. EEEE owns the local API, approvals, project memory, and user-facing state; ISEOL owns Agent decomposition, Workstream/team composition, execution, handoffs, integration, QA, and evaluation.
+The desktop companion is an always-on-top PySide6 launcher with tray hide/restore/quit behavior. It keeps the quick EEEE assistant, ClaimLatch/mobile status, and language choice visible without duplicating the full product UI. The existing local browser workbench is opened from the companion and remains the primary project surface. EEEE owns the local API, approvals, project memory, and user-facing state; ISEOL owns Agent decomposition, Workstream/team composition, execution, handoffs, integration, QA, and evaluation.
 
 ISEOL is used as the internal project-execution Harness Coordinator. Its required project surface is GitHub CI/code review plus Notion documentation; Discord is not provisioned by the core runtime. Desktop owns execution and Mobile forwards commands/status through a paired bridge. A review result is never treated as a release approval by itself: deterministic QA and ClaimLatch must still agree on the same project revision.
 

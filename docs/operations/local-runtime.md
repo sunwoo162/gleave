@@ -17,7 +17,8 @@ build\desktop\GleaveDesktop.exe --self-test
 
 The widget is always-on-top, draggable, interactive, and can hide to or restore from the system tray. It talks only to the local EEEE API. Notion, Google Calendar, and GitHub CI/code review are optional provider adapters; ISEOL runs locally and Discord is not a required runtime dependency.
 
-Desktop's primary command surface is the EEEE input in the widget. It calls
+Desktop's companion exposes the quick EEEE command input and opens the existing
+browser workbench as the primary project surface. The browser UI calls
 `POST /api/assistant/route`; after a project is created, Desktop refreshes
 `GET /api/desktop/state?projectId=...` and shows the Project Runtime state,
 ClaimLatch profile/health, and redacted lifecycle events. The local event journal
