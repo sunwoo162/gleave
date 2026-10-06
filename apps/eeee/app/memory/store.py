@@ -1,0 +1,303 @@
+from __future__ import annotations
+
+import json
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from app.memory.models import MemoryCandidate, MemoryRecord, MemoryStatus
+
+
+class MemoryConflictError(RuntimeError):
+    """A candidate ID was reused for different content."""
+
+
+class MemoryPromotionError(RuntimeError):
+    """A memory lifecycle transition is not allowed."""
+
+
+class MemoryStore:
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def init(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self._connect() as connection:
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS memory_records (
+                    id TEXT PRIMARY KEY,
+                    kind TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    scope_json TEXT NOT NULL,
+                    source_project_id TEXT NOT NULL,
+                    source_artifact_ids_json TEXT NOT NULL,
+                    evidence_ids_json TEXT NOT NULL,
+                    verification_ids_json TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    last_verified_at TEXT,
+                    expires_at TEXT,
+                    superseded_by_id TEXT,
+                    approved_by TEXT,
+                    user_editable INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS memory_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    memory_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    detail_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_memory_status ON memory_records (status);
+                CREATE INDEX IF NOT EXISTS idx_memory_project ON memory_records (source_project_id);
+                """
+            )
+
+    def save_candidate(self, candidate: MemoryCandidate) -> MemoryRecord:
+        record = MemoryRecord(
+            id=candidate.candidate_id,
+            kind=candidate.kind,
+            content=candidate.content,
+            scope=candidate.scope,
+            source_project_id=candidate.source_project_id,
+            source_artifact_ids=candidate.source_artifact_ids,
+            evidence_ids=candidate.evidence_ids,
+            verification_ids=candidate.verification_ids,
+            confidence=candidate.confidence,
+            status=MemoryStatus.CANDIDATE,
+            created_at=candidate.created_at,
+        )
+        with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT * FROM memory_records WHERE id = ?", (record.id,)
+            ).fetchone()
+            if existing is not None:
+                current = _record_from_row(existing)
+                if current != record:
+                    raise MemoryConflictError(
+                        f"Memory candidate {record.id} already exists with different content"
+                    )
+                return current
+            _insert_record(connection, record)
+            _append_event(connection, record.id, "candidate_created", "system", {})
+        return record
+
+    def get(self, memory_id: str) -> MemoryRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM memory_records WHERE id = ?", (memory_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Memory not found: {memory_id}")
+        return _record_from_row(row)
+
+    def promote(
+        self,
+        memory_id: str,
+        *,
+        actor: str,
+        evidence_ids: list[str],
+    ) -> MemoryRecord:
+        if not actor.strip():
+            raise MemoryPromotionError("Promotion requires an actor")
+        if not evidence_ids:
+            raise MemoryPromotionError("Promotion requires verification evidence")
+        now = _now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM memory_records WHERE id = ?", (memory_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Memory not found: {memory_id}")
+            record = _record_from_row(row)
+            if record.status is not MemoryStatus.CANDIDATE:
+                raise MemoryPromotionError(
+                    f"Only candidate memories can be promoted: {record.status.value}"
+                )
+            connection.execute(
+                "UPDATE memory_records SET status = ?, last_verified_at = ?, "
+                "approved_by = ?, evidence_ids_json = ? WHERE id = ?",
+                (
+                    MemoryStatus.ACTIVE.value,
+                    _iso(now),
+                    actor,
+                    json.dumps(evidence_ids),
+                    memory_id,
+                ),
+            )
+            _append_event(connection, memory_id, "promoted", actor, {"evidenceIds": evidence_ids})
+            return record.model_copy(
+                update={
+                    "status": MemoryStatus.ACTIVE,
+                    "last_verified_at": now,
+                    "approved_by": actor,
+                    "evidence_ids": evidence_ids,
+                }
+            )
+
+    def supersede(self, memory_id: str, replacement_id: str) -> MemoryRecord:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            old_row = connection.execute(
+                "SELECT * FROM memory_records WHERE id = ?", (memory_id,)
+            ).fetchone()
+            replacement_row = connection.execute(
+                "SELECT * FROM memory_records WHERE id = ?", (replacement_id,)
+            ).fetchone()
+            if old_row is None:
+                raise KeyError(f"Memory not found: {memory_id}")
+            if replacement_row is None:
+                raise KeyError(f"Memory not found: {replacement_id}")
+            old = _record_from_row(old_row)
+            replacement = _record_from_row(replacement_row)
+            if old.status is not MemoryStatus.ACTIVE:
+                raise MemoryPromotionError("Only active memories can be superseded")
+            if replacement.status is not MemoryStatus.ACTIVE:
+                raise MemoryPromotionError("Replacement memory must be active")
+            connection.execute(
+                "UPDATE memory_records SET status = ?, superseded_by_id = ? WHERE id = ?",
+                (MemoryStatus.SUPERSEDED.value, replacement_id, memory_id),
+            )
+            _append_event(
+                connection,
+                memory_id,
+                "superseded",
+                "system",
+                {"replacementId": replacement_id},
+            )
+            return old.model_copy(
+                update={
+                    "status": MemoryStatus.SUPERSEDED,
+                    "superseded_by_id": replacement_id,
+                }
+            )
+
+    def revoke(self, memory_id: str, *, reason: str) -> MemoryRecord:
+        if not reason.strip():
+            raise MemoryPromotionError("Revocation requires a reason")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM memory_records WHERE id = ?", (memory_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Memory not found: {memory_id}")
+            record = _record_from_row(row)
+            if record.status is MemoryStatus.REVOKED:
+                return record
+            connection.execute(
+                "UPDATE memory_records SET status = ? WHERE id = ?",
+                (MemoryStatus.REVOKED.value, memory_id),
+            )
+            _append_event(connection, memory_id, "revoked", "user", {"reason": reason})
+            return record.model_copy(update={"status": MemoryStatus.REVOKED})
+
+    def search(
+        self,
+        query: str,
+        *,
+        scope: dict[str, Any] | None = None,
+        limit: int = 20,
+    ) -> list[MemoryRecord]:
+        tokens = {token for token in query.lower().split() if token}
+        now = _iso(_now())
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM memory_records WHERE status = ? "
+                "AND (expires_at IS NULL OR expires_at > ?) ORDER BY confidence DESC, created_at DESC",
+                (MemoryStatus.ACTIVE.value, now),
+            ).fetchall()
+        ranked: list[tuple[int, float, MemoryRecord]] = []
+        for row in rows:
+            record = _record_from_row(row)
+            if scope and any(record.scope.get(key) != value for key, value in scope.items()):
+                continue
+            haystack = (record.content + " " + " ".join(map(str, record.scope.values()))).lower()
+            score = sum(1 for token in tokens if token in haystack)
+            if tokens and score == 0:
+                continue
+            ranked.append((score, record.confidence, record))
+        ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return [record for _, _, record in ranked[:limit]]
+
+
+def _insert_record(connection: sqlite3.Connection, record: MemoryRecord) -> None:
+    connection.execute(
+        "INSERT INTO memory_records (id, kind, content, scope_json, source_project_id, "
+        "source_artifact_ids_json, evidence_ids_json, verification_ids_json, confidence, "
+        "status, created_at, last_verified_at, expires_at, superseded_by_id, approved_by, user_editable) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            record.id,
+            record.kind,
+            record.content,
+            json.dumps(record.scope),
+            record.source_project_id,
+            json.dumps(record.source_artifact_ids),
+            json.dumps(record.evidence_ids),
+            json.dumps(record.verification_ids),
+            record.confidence,
+            record.status.value,
+            _iso(record.created_at),
+            _iso(record.last_verified_at) if record.last_verified_at else None,
+            _iso(record.expires_at) if record.expires_at else None,
+            record.superseded_by_id,
+            record.approved_by,
+            int(record.user_editable),
+        ),
+    )
+
+
+def _record_from_row(row: sqlite3.Row) -> MemoryRecord:
+    return MemoryRecord(
+        id=row["id"],
+        kind=row["kind"],
+        content=row["content"],
+        scope=json.loads(row["scope_json"]),
+        source_project_id=row["source_project_id"],
+        source_artifact_ids=json.loads(row["source_artifact_ids_json"]),
+        evidence_ids=json.loads(row["evidence_ids_json"]),
+        verification_ids=json.loads(row["verification_ids_json"]),
+        confidence=row["confidence"],
+        status=row["status"],
+        created_at=row["created_at"],
+        last_verified_at=row["last_verified_at"],
+        expires_at=row["expires_at"],
+        superseded_by_id=row["superseded_by_id"],
+        approved_by=row["approved_by"],
+        user_editable=bool(row["user_editable"]),
+    )
+
+
+def _append_event(
+    connection: sqlite3.Connection,
+    memory_id: str,
+    event_type: str,
+    actor: str,
+    detail: dict[str, Any],
+) -> None:
+    connection.execute(
+        "INSERT INTO memory_events (memory_id, event_type, actor, detail_json, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (memory_id, event_type, actor, json.dumps(detail), _iso(_now())),
+    )
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()

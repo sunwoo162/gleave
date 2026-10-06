@@ -4,6 +4,40 @@ const isoTimestamp = z.string().datetime({ offset: true });
 const nonEmptyString = z.string().trim().min(1);
 const looseObject = z.record(z.string(), z.unknown());
 
+const QaCheckV1Schema = z
+  .object({
+    id: nonEmptyString,
+    label: nonEmptyString,
+    status: z.enum(["PASS", "WARN", "FAIL"]),
+    summary: nonEmptyString,
+    evidenceIds: z.array(nonEmptyString),
+  })
+  .strict();
+
+const QaFindingV1Schema = z
+  .object({
+    checkId: nonEmptyString,
+    severity: z.enum(["WARN", "FAIL"]),
+    summary: nonEmptyString,
+    evidenceIds: z.array(nonEmptyString).min(1),
+  })
+  .strict();
+
+export const QaReportV1Schema = z
+  .object({
+    schemaVersion: z.literal(1),
+    projectId: nonEmptyString,
+    projectRevision: nonEmptyString,
+    status: z.enum(["PASS", "WARN", "FAIL"]),
+    independent: z.literal(true),
+    executor: z.literal("iseol-independent-qa"),
+    checks: z.array(QaCheckV1Schema),
+    findings: z.array(QaFindingV1Schema),
+    evidenceIds: z.array(nonEmptyString).min(1),
+    createdAt: isoTimestamp,
+  })
+  .strict();
+
 export const ProjectBriefV1Schema = z
   .object({
     schemaVersion: z.literal(1),
@@ -82,12 +116,17 @@ export const MemoryCandidateV1Schema = z
   .strict();
 
 export type ProjectBriefV1 = z.infer<typeof ProjectBriefV1Schema>;
+export type QaReportV1 = z.infer<typeof QaReportV1Schema>;
 export type ProjectOutcomeReportV1 = z.infer<typeof ProjectOutcomeReportV1Schema>;
 export type VerificationEnvelopeV1 = z.infer<typeof VerificationEnvelopeV1Schema>;
 export type MemoryCandidateV1 = z.infer<typeof MemoryCandidateV1Schema>;
 
 export function parseProjectBriefV1(value: unknown): ProjectBriefV1 {
   return ProjectBriefV1Schema.parse(value);
+}
+
+export function parseQaReportV1(value: unknown): QaReportV1 {
+  return QaReportV1Schema.parse(value);
 }
 
 export function parseProjectOutcomeReportV1(value: unknown): ProjectOutcomeReportV1 {

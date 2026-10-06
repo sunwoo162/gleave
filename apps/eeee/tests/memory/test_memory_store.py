@@ -1,0 +1,87 @@
+from pathlib import Path
+from shutil import rmtree
+from uuid import uuid4
+
+import pytest
+
+from app.memory.models import MemoryCandidate, MemoryStatus
+from app.memory.store import MemoryConflictError, MemoryStore
+
+
+def _candidate(
+    candidate_id: str = "candidate-1",
+    *,
+    content: str = "Run responsive viewport checks",
+    scope: dict[str, object] | None = None,
+) -> MemoryCandidate:
+    return MemoryCandidate(
+        candidate_id=candidate_id,
+        kind="qa_rule",
+        content=content,
+        scope=scope or {"technology": "web"},
+        source_project_id="project-1",
+        source_artifact_ids=["qa-report-1"],
+        evidence_ids=["evidence-1"],
+        verification_ids=["claimlatch-report-1"],
+        confidence=0.9,
+        created_at="2026-10-06T00:00:00Z",
+    )
+
+
+@pytest.fixture
+def memory_store() -> tuple[MemoryStore, Path]:
+    path = Path("var") / ("memory-test-" + uuid4().hex) / "memory.sqlite3"
+    store = MemoryStore(path)
+    store.init()
+    yield store, path
+    rmtree(path.parent, ignore_errors=True)
+
+
+def test_candidate_survives_store_reopen(memory_store: tuple[MemoryStore, Path]) -> None:
+    store, path = memory_store
+    saved = store.save_candidate(_candidate())
+
+    reopened = MemoryStore(path)
+    reopened.init()
+    loaded = reopened.get(saved.id)
+
+    assert loaded.status is MemoryStatus.CANDIDATE
+    assert loaded.content == "Run responsive viewport checks"
+    assert loaded.source_project_id == "project-1"
+
+
+def test_candidate_requires_evidence_to_become_active(memory_store: tuple[MemoryStore, Path]) -> None:
+    store, _ = memory_store
+    saved = store.save_candidate(_candidate())
+
+    active = store.promote(saved.id, actor="user", evidence_ids=["evidence-1"])
+
+    assert active.status is MemoryStatus.ACTIVE
+    assert active.approved_by == "user"
+    assert active.last_verified_at is not None
+
+
+def test_candidate_cannot_be_overwritten_with_different_content(
+    memory_store: tuple[MemoryStore, Path],
+) -> None:
+    store, _ = memory_store
+    store.save_candidate(_candidate())
+
+    with pytest.raises(MemoryConflictError):
+        store.save_candidate(_candidate(content="Different rule"))
+
+
+def test_active_memory_can_be_revoked_and_superseded(
+    memory_store: tuple[MemoryStore, Path],
+) -> None:
+    store, _ = memory_store
+    original = store.save_candidate(_candidate())
+    store.promote(original.id, actor="user", evidence_ids=["evidence-1"])
+    replacement = store.save_candidate(_candidate("candidate-2", content="Run 320/375/768px checks"))
+    store.promote(replacement.id, actor="user", evidence_ids=["evidence-2"])
+
+    superseded = store.supersede(original.id, replacement.id)
+    revoked = store.revoke(replacement.id, reason="User rejected the new rule")
+
+    assert superseded.status is MemoryStatus.SUPERSEDED
+    assert revoked.status is MemoryStatus.REVOKED

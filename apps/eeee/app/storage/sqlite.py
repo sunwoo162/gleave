@@ -10,6 +10,7 @@ from app.design.references import ReferencePack
 from app.design.visual_verify import VisualReport
 from app.harness.state import AgentTask, ProjectState
 from app.domain.errors import AlreadyApprovedError, ApprovalError, CandidateSetChangedError
+from app.memory.store import MemoryStore
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -279,6 +280,9 @@ class SQLiteStore:
             connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_request_id ON runs (request_id)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_status ON runs (status)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs (created_at)")
+        # EEEE memory intentionally shares the durable state database so a
+        # restart cannot separate project state from the evidence-backed memory.
+        MemoryStore(self.path).init()
 
     def save_request(self, brief: RequestBrief) -> str:
         request_id = str(uuid4())

@@ -14,6 +14,10 @@ from app.domain.models import (
 )
 from app.execution.runner import WorkspaceExecutionBlocked
 from app.execution.verifier import WorkspaceVerifier
+from app.integrations.contracts import ProjectOutcomeReportV1
+from app.memory.models import MemoryRecord
+from app.memory.pipeline import OutcomeMemoryPipeline
+from app.memory.store import MemoryStore
 from app.oss.github_client import ResearchError
 from app.oss.researcher import GitHubResearcher
 from app.storage.sqlite import SQLiteStore
@@ -30,6 +34,7 @@ class Coordinator:
         artifact_writer: WorkspaceArtifactWriter | None = None,
         researcher: GitHubResearcher | None = None,
         verifier: WorkspaceVerifier | None = None,
+        memory_store: MemoryStore | None = None,
     ):
         self.store = store
         self.worker = worker or DeterministicFakeWorker()
@@ -37,6 +42,15 @@ class Coordinator:
         self.artifacts = artifact_writer or WorkspaceArtifactWriter()
         self.researcher = researcher
         self.verifier = verifier
+        self.memory = memory_store or MemoryStore(store.path)
+        self.memory_pipeline = OutcomeMemoryPipeline(self.memory)
+
+    def record_project_outcome(
+        self, outcome_report: ProjectOutcomeReportV1
+    ) -> list[MemoryRecord]:
+        """Ingest ISEOL's independently verified project result into EEEE memory."""
+
+        return self.memory_pipeline.ingest(outcome_report)
 
     def create_project(
         self, project_id: str, name: str, workspace: str, revision: str = "initial"
