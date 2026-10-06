@@ -23,10 +23,16 @@ if ($nestedGit) {
     throw "Nested Git directories are not allowed: $($nestedGit.FullName -join ', ')"
 }
 
+$generatedSegments = @(".git", "node_modules", "dist", "__pycache__", ".pytest_cache", ".oss-builder", "var")
 $secretLike = Get-ChildItem -LiteralPath $root -File -Force -Recurse |
     Where-Object {
-        (($_.Name -match '^(\.env(\..*)?|.*\.(pem|key|p12|pfx))$') -and $_.Name -ne '.env.example') -or
-        ($_.Name -match '(secret|credential|password|token)' -and $_.Extension -notin @(".md", ".ts", ".py"))
+        $relative = $_.FullName.Substring($root.Length).TrimStart('\')
+        $segments = $relative -split '\\'
+        $generated = @($segments | Where-Object { $_ -in $generatedSegments }).Count -gt 0
+        (-not $generated) -and (
+            (($_.Name -match '^(\.env(\..*)?|.*\.(pem|key|p12|pfx))$') -and $_.Name -ne '.env.example') -or
+            ($_.Name -match '(secret|credential|password|token)' -and $_.Extension -notin @(".md", ".ts", ".py"))
+        )
     }
 if ($secretLike) {
     throw "Secret-like files were imported: $($secretLike.FullName -join ', ')"
