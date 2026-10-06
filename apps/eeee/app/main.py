@@ -14,6 +14,7 @@ from app.api.routes import (
     build_design_router,
     build_desktop_router,
     build_mobile_router,
+    build_plugin_router,
     build_project_view_router,
     build_router,
 )
@@ -38,6 +39,7 @@ from app.project_runtime.connectors import build_default_connectors
 from app.project_runtime.documents import ProjectDocumentService
 from app.project_runtime.evidence import ProjectEvidenceService
 from app.project_view.service import ProjectViewService
+from app.plugins.host import PluginHost
 from app.storage.sqlite import SQLiteStore
 from app.trust.gate import TrustGate
 from app.trust.pipeline import TrustPipeline
@@ -178,6 +180,8 @@ def create_app(
     application.state.assistant_service = assistant_service
     design_service = DesignService(store=store)
     application.state.design_service = design_service
+    plugin_host = PluginHost(store, execution_store=kernel.executions)
+    application.state.plugin_host = plugin_host
 
     def mobile_snapshot(project_id: str | None) -> dict[str, object]:
         snapshot: dict[str, object] = {
@@ -217,6 +221,7 @@ def create_app(
         )
     )
     application.include_router(build_design_router(design_service))
+    application.include_router(build_plugin_router(plugin_host))
     static_dir = Path(__file__).parent / "static"
     application.mount("/static", StaticFiles(directory=static_dir), name="static")
 

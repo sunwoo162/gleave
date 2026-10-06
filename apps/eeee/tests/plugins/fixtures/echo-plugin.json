@@ -1,0 +1,14 @@
+{
+  "id": "echo",
+  "version": "1.0.0",
+  "name": "Echo Plugin",
+  "protocolVersion": "1",
+  "command": ["python", "echo_plugin.py"],
+  "permissions": [
+    {"id": "local.read", "description": "Read local input", "sideEffectLevel": "none"}
+  ],
+  "actions": [
+    {"id": "echo", "description": "Echo input", "permissionIds": ["local.read"], "sideEffectLevel": "none"},
+    {"id": "crash", "description": "Crash fixture", "permissionIds": ["local.read"], "sideEffectLevel": "none"}
+  ]
+}

@@ -1,0 +1,130 @@
+"""Isolated local plugin lifecycle and subprocess transport."""
+
+import json
+from pathlib import Path
+import subprocess
+import sys
+from uuid import uuid4
+
+from app.contracts import ExecutionEnvelope, ExecutionError, ExecutionStatus
+from app.plugins.manifest import discover_manifest
+from app.plugins.models import PluginHealth, PluginManifest
+from app.plugins.protocol import request, validate_response
+from app.runtime.store import ExecutionStore, PluginRegistrationStore
+
+
+class PluginHost:
+    def __init__(self, store, *, allowed_scope_ids: set[str] | None = None,
+                 execution_store: ExecutionStore | None = None, timeout_seconds: float = 10.0) -> None:
+        self.store = store
+        self.registrations = PluginRegistrationStore(store)
+        self.executions = execution_store or ExecutionStore(store)
+        self.allowed_scope_ids = allowed_scope_ids
+        self.timeout_seconds = timeout_seconds
+        self._manifests: dict[str, PluginManifest] = {}
+        self._sources: dict[str, Path | None] = {}
+
+    def discover(self, source) -> PluginManifest:
+        manifest = discover_manifest(source)
+        self._manifests[manifest.id] = manifest
+        self._sources[manifest.id] = Path(source).parent if isinstance(source, (str, Path)) else None
+        return manifest
+
+    def register(self, manifest: PluginManifest):
+        self._manifests[manifest.id] = manifest
+        return self.registrations.register(manifest)
+
+    def connect(self, plugin_id: str, approval: bool):
+        registration = self.registrations.get(plugin_id)
+        manifest = self._manifest(plugin_id, registration.manifest)
+        requested = {scope.id for permission in manifest.permissions for scope in [permission]}
+        allowed = requested if self.allowed_scope_ids is None else requested & self.allowed_scope_ids
+        if not approval or allowed != requested:
+            self.registrations.set_status(plugin_id, "disabled")
+            raise PermissionError("plugin permission approval was denied")
+        health = self._health_probe(manifest)
+        if health.status != "healthy":
+            self.registrations.set_status(plugin_id, "failed")
+            raise RuntimeError(health.reason)
+        return self.registrations.set_status(plugin_id, "connected")
+
+    def invoke(self, plugin_id: str, action: str, value: dict[str, object]) -> ExecutionEnvelope:
+        registration = self.registrations.get(plugin_id)
+        manifest = self._manifest(plugin_id, registration.manifest)
+        envelope = ExecutionEnvelope(
+            execution_id=f"plugin-execution-{uuid4().hex}", request_id=f"plugin-request-{uuid4().hex}",
+            capability_id=f"plugin:{plugin_id}", tool_id=plugin_id, actor="EEEE",
+            input={"action": action, "input": value},
+        )
+        self.executions.save(envelope)
+        running: ExecutionEnvelope | None = None
+        try:
+            if registration.status != "connected":
+                raise PermissionError("plugin is not connected")
+            selected = next((item for item in manifest.actions if item.id == action), None)
+            if selected is None:
+                raise ValueError(f"unknown plugin action: {action}")
+            running = envelope.transition(ExecutionStatus.RUNNING)
+            self.executions.save(running)
+            output = self._call(manifest, action, value, plugin_id)
+            completed = running.transition(ExecutionStatus.COMPLETED, output=output)
+            self.executions.save(completed)
+            return completed
+        except Exception as exc:
+            failed = running or envelope
+            error = ExecutionError(code="plugin_failed", message=str(exc) or type(exc).__name__)
+            if failed.status == ExecutionStatus.QUEUED:
+                failed = failed.transition(ExecutionStatus.BLOCKED, error=error)
+            else:
+                failed = failed.transition(ExecutionStatus.FAILED, error=error)
+            self.executions.save(failed)
+            return failed
+
+    def health(self, plugin_id: str) -> PluginHealth:
+        registration = self.registrations.get(plugin_id)
+        return self._health_probe(self._manifest(plugin_id, registration.manifest))
+
+    def disconnect(self, plugin_id: str):
+        return self.registrations.set_status(plugin_id, "available")
+
+    def remove(self, plugin_id: str) -> None:
+        self.registrations.remove(plugin_id)
+        self._manifests.pop(plugin_id, None)
+        self._sources.pop(plugin_id, None)
+
+    def list(self):
+        return self.registrations.list()
+
+    def _manifest(self, plugin_id: str, data: dict) -> PluginManifest:
+        return self._manifests.get(plugin_id) or PluginManifest.model_validate(data)
+
+    def _health_probe(self, manifest: PluginManifest) -> PluginHealth:
+        try:
+            self._call(manifest, "__health__", {}, manifest.id)
+        except Exception as exc:
+            return PluginHealth(plugin_id=manifest.id, status="unhealthy", reason=str(exc))
+        return PluginHealth(plugin_id=manifest.id, status="healthy", reason="health check passed")
+
+    def _call(self, manifest: PluginManifest, action: str, value: dict[str, object], plugin_id: str) -> dict[str, object]:
+        command = list(manifest.command)
+        if command and command[0].casefold() in {"python", "python.exe"}:
+            command[0] = sys.executable
+        source_dir = self._sources.get(plugin_id)
+        if source_dir is not None:
+            command = [str(source_dir / item) if index > 0 and not Path(item).is_absolute() else item
+                       for index, item in enumerate(command)]
+        correlation_id = uuid4().hex
+        completed = subprocess.run(
+            command, input=json.dumps(request(correlation_id, action, value)) + "\n",
+            text=True, capture_output=True, timeout=self.timeout_seconds, cwd=source_dir,
+            shell=False, check=False,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(f"plugin process exited with code {completed.returncode}")
+        lines = [line for line in completed.stdout.splitlines() if line.strip()]
+        if not lines:
+            raise RuntimeError("plugin returned no response")
+        response = validate_response(json.loads(lines[-1]), correlation_id)
+        if response["status"] == "failed":
+            raise RuntimeError(str(response["output"].get("error", "plugin reported failure")))
+        return dict(response["output"])

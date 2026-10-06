@@ -19,6 +19,8 @@ from app.integrations.contracts import ProjectBriefV1, ProjectOutcomeReportV1
 from app.integrations.contracts import GithubReviewResultV1
 from app.memory.models import MemoryRecord
 from app.mobile.bridge import MobileBridge, MobileBridgeError
+from app.plugins.host import PluginHost
+from app.plugins.models import PluginHealth, PluginManifest
 from app.project_runtime.documents import ProjectDocumentService
 from app.project_runtime.evidence import ProjectEvidenceService
 from app.project_runtime.models import ProjectDocumentSyncResult, ProjectEvidenceIngestionResult, ProjectProfile
@@ -151,6 +153,96 @@ class MobilePairPayload(BaseModel):
     device_name: str = Field(alias="deviceName", min_length=1, max_length=120)
 
     model_config = {"populate_by_name": True}
+
+
+class PluginDiscoverPayload(BaseModel):
+    source: str = Field(min_length=1)
+
+
+class PluginConnectPayload(BaseModel):
+    approved: bool = False
+
+
+class PluginInvokePayload(BaseModel):
+    action: str = Field(min_length=1)
+    input: dict[str, object] = Field(default_factory=dict)
+
+
+def _plugin_registration_payload(registration: object) -> dict[str, object]:
+    return {
+        "pluginId": registration.plugin_id,
+        "manifestVersion": registration.manifest_version,
+        "manifest": registration.manifest,
+        "status": registration.status,
+        "createdAt": registration.created_at,
+        "updatedAt": registration.updated_at,
+    }
+
+
+def build_plugin_router(host: PluginHost) -> APIRouter:
+    """Expose the local plugin lifecycle; no remote plugin registry is involved."""
+
+    router = APIRouter(prefix="/api/plugins")
+
+    @router.get("")
+    def list_plugins() -> list[dict[str, object]]:
+        return [_plugin_registration_payload(item) for item in host.list()]
+
+    @router.post("/discover", response_model=PluginManifest)
+    def discover_plugin(payload: PluginDiscoverPayload) -> PluginManifest:
+        try:
+            return host.discover(payload.source)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @router.post("/{plugin_id}/register")
+    def register_plugin(plugin_id: str, manifest: PluginManifest) -> dict[str, object]:
+        if manifest.id != plugin_id:
+            raise HTTPException(status_code=409, detail="Plugin route ID does not match manifest ID")
+        try:
+            return _plugin_registration_payload(host.register(manifest))
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/{plugin_id}/connect")
+    def connect_plugin(plugin_id: str, payload: PluginConnectPayload) -> dict[str, object]:
+        try:
+            return _plugin_registration_payload(host.connect(plugin_id, payload.approved))
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except (KeyError, RuntimeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.get("/{plugin_id}/health", response_model=PluginHealth)
+    def plugin_health(plugin_id: str) -> PluginHealth:
+        try:
+            return host.health(plugin_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.post("/{plugin_id}/invoke")
+    def invoke_plugin(plugin_id: str, payload: PluginInvokePayload):
+        try:
+            return host.invoke(plugin_id, payload.action, payload.input)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.post("/{plugin_id}/disconnect")
+    def disconnect_plugin(plugin_id: str) -> dict[str, object]:
+        try:
+            return _plugin_registration_payload(host.disconnect(plugin_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.delete("/{plugin_id}", status_code=204)
+    def remove_plugin(plugin_id: str) -> Response:
+        try:
+            host.remove(plugin_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return Response(status_code=204)
+
+    return router
 
 
 def build_router(coordinator: Coordinator) -> APIRouter:
