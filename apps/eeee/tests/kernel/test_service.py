@@ -189,6 +189,29 @@ def test_request_creation_failure_keeps_allocated_project_link_in_parent(tmp_pat
     assert ExecutionStore(store).get(result.execution_id) == result
 
 
+def test_initial_stale_child_rejection_keeps_project_and_request_on_parent(tmp_path):
+    class RevisionAdvancingCoordinator(Coordinator):
+        def create_request(self, project_id, text):
+            state = super().create_request(project_id, text)
+            self.store.update_project_revision(project_id, "rev-after-request")
+            return state
+
+    kernel, store, _ = make_kernel(tmp_path, coordinator_type=RevisionAdvancingCoordinator)
+    result = kernel.route(AssistantRequest(raw_text="앱 만들어줘"), AssistantContext())
+
+    assert result.status == ExecutionStatus.FAILED
+    assert result.error.code == "stale_project_revision"
+    assert result.output["status"] == "blocked"
+    assert result.output["projectId"]
+    assert result.output["coordinatorRequestId"]
+    assert "childExecutionId" not in result.output
+    with sqlite3.connect(store.path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM execution_envelopes WHERE project_id = ?",
+            (result.output["projectId"],),
+        ).fetchone()[0] == 0
+
+
 def test_trust_gate_exception_terminalizes_child_and_parent_without_provisioning(tmp_path):
     class BrokenTrustGate(TrustGate):
         def verify_action(self, **kwargs):

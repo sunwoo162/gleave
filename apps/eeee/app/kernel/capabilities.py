@@ -13,6 +13,7 @@ from app.config import Settings
 from app.contracts import ExecutionEnvelope, ExecutionError, ExecutionStatus, SideEffectLevel
 from app.coordinator.service import Coordinator
 from app.project_runtime.provisioner import ProjectProvisioner
+from app.runtime.store import StaleProjectRevision
 from app.storage.sqlite import SQLiteStore
 from app.workflow.planner import parse_request
 
@@ -155,11 +156,25 @@ class ProjectExecutionCapability:
                 "missingConnectors": missing, "documentExecutionId": document_execution_id,
             })
 
-        child = envelope_context.run_child(
-            parent=envelope_context.envelope, project_id=project.id, revision=project.revision,
-            request_id=state.request_id, tool_id="iseol", inputs={"text": text, "workspace": project.workspace},
-            side_effect_level=SideEffectLevel.LOCAL, operation=provision,
-        )
+        try:
+            child = envelope_context.run_child(
+                parent=envelope_context.envelope, project_id=project.id, revision=project.revision,
+                request_id=state.request_id, tool_id="iseol", inputs={"text": text, "workspace": project.workspace},
+                side_effect_level=SideEffectLevel.LOCAL, operation=provision,
+            )
+        except StaleProjectRevision as exc:
+            message = str(exc).strip() or "stale project revision"
+            return CapabilityOutcome(
+                {
+                    "status": "blocked",
+                    "message": message,
+                    "projectId": project.id,
+                    "projectRevision": project.revision,
+                    "coordinatorRequestId": state.request_id,
+                },
+                ExecutionStatus.FAILED,
+                ExecutionError(code="stale_project_revision", message=message),
+            )
         output = dict(child.model_dump(mode="json")["output"] or {})
         output.update(projectId=project.id, projectRevision=project.revision, childExecutionId=child.execution_id,
                       coordinatorRequestId=state.request_id)

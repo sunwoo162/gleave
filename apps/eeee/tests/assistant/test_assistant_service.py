@@ -55,3 +55,29 @@ def test_assistant_service_does_not_create_project_for_a_reminder(tmp_path) -> N
     assert result.project_id is None
     assert result.project_profile is None
     assert result.status == "selected"
+
+
+def test_assistant_service_reports_initial_stale_child_as_blocked_observation(tmp_path) -> None:
+    class RevisionAdvancingCoordinator(Coordinator):
+        def create_request(self, project_id, text):
+            state = super().create_request(project_id, text)
+            self.store.update_project_revision(project_id, "rev-after-request")
+            return state
+
+    settings = Settings(data_dir=tmp_path / "data", workspace_root=tmp_path / "workspaces")
+    store = SQLiteStore(settings.data_dir / "state.sqlite3")
+    store.init()
+    coordinator = RevisionAdvancingCoordinator(store)
+    service = AssistantService(
+        router=CapabilityRouter(build_default_registry()),
+        coordinator=coordinator,
+        store=store,
+        settings=settings,
+        provisioner=ProjectProvisioner(store),
+    )
+
+    result = service.route("앱 만들어줘")
+
+    assert result.status == "blocked"
+    assert result.project_id is not None
+    assert "stale project revision" in result.message
