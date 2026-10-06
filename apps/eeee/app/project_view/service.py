@@ -182,7 +182,11 @@ class ProjectViewService:
             (report_id, project_id, revision),
         ).fetchone()
         if report is not None and report["task_id"] in subjects:
-            values["qa_status"] = _qa_status(report["status"], json.loads(report["checks_json"]))
+            try:
+                checks = json.loads(report["checks_json"])
+            except (TypeError, json.JSONDecodeError):
+                checks = None
+            values["qa_status"] = _qa_status(report["status"], checks)
         if node.evidence_ids:
             references = {row[0] for row in connection.execute(
                 "SELECT reference FROM project_evidence WHERE project_id = ? AND project_revision = ?", (project_id, revision),

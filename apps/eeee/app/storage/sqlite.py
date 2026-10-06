@@ -403,6 +403,22 @@ class SQLiteStore:
                 "task_json = excluded.task_json",
                 (task.id, project_id, task.model_dump_json()),
             )
+            revision = task.project_revision
+            if revision is None:
+                revision = connection.execute(
+                    "SELECT revision FROM projects WHERE id = ?", (project_id,)
+                ).fetchone()
+                revision = revision[0] if revision is not None else None
+            if revision is not None:
+                self._append_project_map_event(
+                    connection, project_id, revision,
+                    {"eventType": "task.lifecycle", "executionId": task.id,
+                     "requestId": task.id, "projectId": project_id,
+                     "projectRevision": revision,
+                     "payload": {"source": "harness", "taskId": task.id,
+                                  "status": task.status},
+                     "publishedAt": datetime.now(timezone.utc).isoformat()},
+                )
 
     def get_harness_task(self, task_id: str) -> AgentTask:
         with self._connect() as connection:
@@ -644,6 +660,15 @@ class SQLiteStore:
                 "UPDATE projects SET state = ?, active_task_id = ? WHERE id = ?",
                 (task.state.value, task.id, project_id),
             )
+            self._append_project_map_event(
+                connection, project_id, revision,
+                {"eventType": "task.lifecycle", "executionId": task.id,
+                 "requestId": task.request_id, "projectId": project_id,
+                 "projectRevision": revision,
+                 "payload": {"source": "coordinator", "taskId": task.id,
+                              "status": task.state.value},
+                 "publishedAt": datetime.now(timezone.utc).isoformat()},
+            )
         return task
 
     def get_task(self, task_id: str) -> TaskRecord:
@@ -698,7 +723,33 @@ class SQLiteStore:
                 "UPDATE projects SET state = ?, active_task_id = ? WHERE id = ?",
                 (task.state.value, task.id, task.project_id),
             )
+            self._append_project_map_event(
+                connection, task.project_id, task.revision,
+                {"eventType": "task.lifecycle", "executionId": task.id,
+                 "requestId": task.request_id, "projectId": task.project_id,
+                 "projectRevision": task.revision,
+                 "payload": {"source": "coordinator", "taskId": task.id,
+                              "status": task.state.value},
+                 "publishedAt": datetime.now(timezone.utc).isoformat()},
+            )
         return task
+
+    @staticmethod
+    def _append_project_map_event(connection: sqlite3.Connection, project_id: str,
+                                   project_revision: str, event: dict[str, object]) -> int:
+        cursor = connection.execute(
+            "INSERT INTO execution_events "
+            "(execution_id, request_id, project_id, project_revision, event_type, event_json, published_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (event["executionId"], event["requestId"], project_id, project_revision,
+             event["eventType"], json.dumps(event), event["publishedAt"]),
+        ).lastrowid
+        published = {**event, "cursor": cursor}
+        connection.execute(
+            "UPDATE execution_events SET event_json = ? WHERE cursor = ?",
+            (json.dumps(published), cursor),
+        )
+        return cursor
 
     def append_task_event(self, task_id: str, event: dict[str, object]) -> None:
         with self._connect() as connection:

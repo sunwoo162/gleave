@@ -47,12 +47,12 @@ def test_events_route_uses_durable_cursor_and_validates_cursor(client):
         executions.append_event(EventEnvelope(event_type=kind, execution_id="ex", request_id="r",
             project_id="map-project", project_revision="r1"))
 
-    response = client.get("/api/projects/map-project/map/events?cursor=1")
+    response = client.get("/api/projects/map-project/map/events?cursor=2")
     assert response.status_code == 200
     result = response.json()
-    assert result["cursor"] == 2
+    assert result["cursor"] == 3
     assert [event["eventType"] for event in result["events"]] == ["task.changed"]
-    assert result["events"][0]["cursor"] == 2
+    assert result["events"][0]["cursor"] == 3
     assert client.get("/api/projects/map-project/map/events?cursor=-1").status_code == 422
     assert client.get("/api/projects/map-project/map/events?cursor=text").status_code == 422
 

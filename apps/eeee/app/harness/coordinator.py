@@ -102,7 +102,12 @@ class Coordinator:
 
     def get_state(self) -> ProjectState:
         try:
-            return self.store.get_harness_state(self.project_id)
+            state = self.store.get_harness_state(self.project_id)
+            revision = self._project_revision()
+            if revision != state.project_revision:
+                state = state.model_copy(update={"project_revision": revision})
+                self.store.save_harness_state(self.project_id, state)
+            return state
         except KeyError:
             state = ProjectState(
                 version=0,

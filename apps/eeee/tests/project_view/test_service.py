@@ -195,6 +195,45 @@ def test_projection_is_read_only_and_replays_only_project_revision_events(store)
         view.get_snapshot("unknown")
 
 
+def test_events_replay_coordinator_and_harness_lifecycle_changes_in_order(store):
+    from app.project_view.service import ProjectViewService
+
+    work = store.create_task("p", "request", "r1")
+    store.save_harness_task("p", AgentTask(
+        id="build", role="frontend", state_version=0, workspace="workspace",
+        owned_paths=["src"], status="running", project_revision="r1",
+    ))
+    store.update_task(work.id, PetState.completed, "Finished")
+
+    events = ProjectViewService(store).get_events("p")
+
+    assert [event.event_type for event in events.events] == [
+        "task.lifecycle", "task.lifecycle", "task.lifecycle",
+    ]
+    assert [event.payload["source"] for event in events.events] == [
+        "coordinator", "harness", "coordinator",
+    ]
+    assert [event.cursor for event in events.events] == [1, 2, 3]
+    assert events.cursor == 3
+
+
+def test_new_harness_task_uses_current_project_revision_after_revision_change(store):
+    from app.project_view.service import ProjectViewService
+
+    harness = Coordinator(store, "p")
+    current = harness.get_state()
+    store.update_project_revision("p", "r2")
+
+    started = harness.start_task(AgentTask(
+        id="new-r2-task", role="frontend", state_version=current.version,
+        workspace="workspace", owned_paths=["src"], status="pending",
+    ), current)
+
+    assert started.project_revision == "r2"
+    node_ids = [node.id for node in ProjectViewService(store).get_snapshot("p").nodes]
+    assert "task:new-r2-task" in node_ids
+
+
 def test_unlinked_iseol_execution_is_visible_but_other_capabilities_are_not(store):
     execution(store)
     ExecutionStore(store).save(ExecutionEnvelope(
@@ -266,7 +305,7 @@ def test_unlinked_execution_commit_and_file_details_are_projected(store):
     assert node.troubleshooting_ids == ["incident-2"]
 
 
-@pytest.mark.parametrize("checks", [[], [{"status": "skipped"}], [{"status": "passed"}, None]])
+@pytest.mark.parametrize("checks", [[], [{"status": "skipped"}], [{"status": "passed"}, None], "not-json"])
 def test_empty_skipped_or_malformed_qa_checks_do_not_prove_pass(store, checks):
     # The report table permits legacy arbitrary JSON; malformed stored records
     # are treated as unavailable rather than turned into a successful check.
@@ -274,7 +313,8 @@ def test_empty_skipped_or_malformed_qa_checks_do_not_prove_pass(store, checks):
     task(store, "build", "frontend", "completed", execution_id="ex")
     with store._connect() as connection:
         connection.execute("INSERT INTO reports VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("qa", "p", "build", "r1", "passed", "Legacy QA", json.dumps(checks)))
+            ("qa", "p", "build", "r1", "passed", "Legacy QA",
+             checks if isinstance(checks, str) else json.dumps(checks)))
     node = next(node for node in snapshot(store).nodes if node.id == "task:build")
     assert node.qa_status == "unavailable"
 
