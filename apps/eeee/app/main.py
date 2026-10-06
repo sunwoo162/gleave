@@ -151,6 +151,7 @@ def create_app(
         settings=app_settings,
         provisioner=project_provisioner,
         event_publisher=mobile_bridge.publish,
+        document_service=project_documents,
     )
     application.state.assistant_service = assistant_service
     design_service = DesignService(store=store)

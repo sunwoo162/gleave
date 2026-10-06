@@ -8,6 +8,7 @@ from typing import Protocol
 
 from app.integrations.notion_client import NotionPageRef
 from app.project_runtime.models import (
+    ConnectorBinding,
     ProjectDocumentRecord,
     ProjectDocumentSyncResult,
     ProjectProfile,
@@ -53,6 +54,7 @@ class ProjectDocumentService:
         content_hash = _content_hash(lines)
         existing = self._existing(profile.project_id)
         if existing is not None and existing.content_hash == content_hash:
+            self._mark_connector_completed(profile, existing)
             result = ProjectDocumentSyncResult(
                 status="unchanged",
                 project_id=profile.project_id,
@@ -97,6 +99,7 @@ class ProjectDocumentService:
                 }
             )
         self.store.save_project_document(document)
+        self._mark_connector_completed(profile, document)
         result = ProjectDocumentSyncResult(
             status="synced",
             project_id=profile.project_id,
@@ -131,6 +134,24 @@ class ProjectDocumentService:
                     "reason": result.reason,
                 },
             )
+
+    def _mark_connector_completed(
+        self, profile: ProjectProfile, document: ProjectDocumentRecord
+    ) -> None:
+        connectors = [
+            binding.model_copy(
+                update={
+                    "state": "completed",
+                    "external_ref": document.external_url or document.external_id,
+                    "reason": None,
+                }
+            )
+            if binding.connector_id == "notion"
+            else binding
+            for binding in profile.connectors
+        ]
+        if connectors != profile.connectors:
+            self.store.save_project_profile(profile.model_copy(update={"connectors": connectors}))
 
 
 def _document_record(

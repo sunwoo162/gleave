@@ -151,6 +151,12 @@ Desktop
 Mobile ───────┘ thin remote client
 ```
 
+Project documents and review evidence are durable Desktop records. Notion sync
+uses `POST /api/projects/{projectId}/documents/sync`; ISEOL review delivery uses
+`POST /api/projects/{projectId}/evidence/github-review` with the versioned
+`github-review-result.v1` contract. Both external writes pass through the
+ClaimLatch trust boundary before persistence or provider execution.
+
 The Mobile client calls `POST /api/mobile/assistant/route` for the same EEEE
 secretary and project capabilities available on Desktop, reads
 `GET /api/mobile/state` for the current snapshot, and subscribes to

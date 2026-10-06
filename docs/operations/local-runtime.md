@@ -17,11 +17,26 @@ bridge, and subscribes to `GET /api/mobile/events/stream` for live state. Existi
 secretary features remain available on Mobile because the command is executed by
 EEEE on Desktop. Mobile never receives provider tokens or the local SQLite database.
 
-For a project request, EEEE creates one durable Project Runtime. Notion receives the
-specification, decisions, and execution log when configured. GitHub receives repository,
-CI, and code-review integration when configured. ISEOL owns Agent decomposition,
-integration, and independent QA locally. A missing provider stays
+For a project request, EEEE creates one durable Project Runtime and automatically
+attempts the revision-bound Notion project document sync when that connector is
+configured. GitHub receives repository, CI, and code-review integration when
+configured. ISEOL owns Agent decomposition, integration, and independent QA locally.
+A missing provider stays
 `awaiting_configuration` and is never reported as completed.
+
+When `NOTION_TOKEN` and `NOTION_PARENT_PAGE_ID` are configured, use
+`POST /api/projects/{projectId}/documents/sync` to create or append the
+revision-bound project document. The Notion write is ClaimLatch-gated and the
+page reference is stored in the same SQLite database. `POST
+/api/projects/{projectId}/evidence/github-review` is the local ISEOL evidence
+boundary; it rejects stale revisions and emits a redacted Desktop event.
+
+ISEOL can deliver GitHub CI/code-review evidence without Discord through
+`npm run review:standalone` in `packages/iseol`. Set `GITHUB_TOKEN`,
+`EEEE_BRIDGE_URL`, and the per-project `eeeeProjectId`/`eeeeProjectRevision`
+mapping. The worker uses the exact PR HEAD SHA, posts the GitHub review, and
+delivers the versioned evidence contract to EEEE. Discord remains legacy and
+optional for this path.
 
 The ClaimLatch integration profile is `claimlatch-v0.2.0`. Audit records preserve that
 profile separately from the bundled engine version (`0.3.86`), and `/health` exposes only

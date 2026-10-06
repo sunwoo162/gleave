@@ -12,6 +12,7 @@ from app.assistant.router import CapabilityRouter
 from app.config import Settings
 from app.coordinator.service import Coordinator
 from app.project_runtime.models import ProjectProfile
+from app.project_runtime.documents import ProjectDocumentService
 from app.project_runtime.provisioner import ProjectProvisioner
 from app.storage.sqlite import SQLiteStore
 from app.workflow.planner import parse_request
@@ -38,6 +39,7 @@ class AssistantService:
         settings: Settings,
         provisioner: ProjectProvisioner,
         event_publisher: Callable[[str, dict[str, object]], object] | None = None,
+        document_service: ProjectDocumentService | None = None,
     ) -> None:
         self.router = router
         self.coordinator = coordinator
@@ -45,6 +47,7 @@ class AssistantService:
         self.settings = settings
         self.provisioner = provisioner
         self.event_publisher = event_publisher
+        self.document_service = document_service
 
     def route(self, text: str, workspace: str | None = None) -> AssistantRouteResult:
         request = AssistantRequest(raw_text=text)
@@ -86,13 +89,21 @@ class AssistantService:
             memory_ids=project_brief.retrieved_memory_ids,
             qa_baseline_ids=project_brief.qa_baseline_ids,
         )
+        if self.document_service is not None:
+            self.document_service.sync(provisioned.profile)
+        profile = self.store.get_project_profile(project_id)
+        missing_connectors = sorted(
+            binding.connector_id
+            for binding in profile.connectors
+            if binding.state in {"awaiting_configuration", "planned"}
+        )
         result = AssistantRouteResult(
-            status=provisioned.status,
+            status=profile.provisioning_status,
             selection=selection,
             message="Project Runtime이 생성되었고 외부 연결 상태를 확인해야 해.",
             project_id=project_id,
-            project_profile=provisioned.profile,
-            missing_connectors=provisioned.missing_connectors,
+            project_profile=profile,
+            missing_connectors=missing_connectors,
         )
         self._publish(
             "project.created",

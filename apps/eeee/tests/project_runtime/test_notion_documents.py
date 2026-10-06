@@ -5,7 +5,7 @@ import json
 import httpx
 
 from app.project_runtime.documents import ProjectDocumentService
-from app.project_runtime.models import ProjectProfile
+from app.project_runtime.models import ConnectorBinding, ProjectProfile
 from app.storage.sqlite import SQLiteStore
 from app.trust.models import TrustCheck
 from app.integrations.notion_client import NotionClient
@@ -21,6 +21,14 @@ def _profile() -> ProjectProfile:
         acceptance_criteria=["tests pass"],
         workspace="C:/workspaces/project-1",
         capabilities=["project-execution"],
+        connectors=[
+            ConnectorBinding(
+                connectorId="notion",
+                state="planned",
+                intent="store project documents",
+                idempotencyKey="project-1:notion",
+            )
+        ],
     )
 
 
@@ -101,6 +109,7 @@ def test_project_document_sync_is_trust_gated_and_idempotent(tmp_path) -> None:
     assert notion.created == 1
     assert notion.appended == 0
     assert store.get_project_document("project-1", "notion").external_id == "page-1"
+    assert store.get_project_profile("project-1").connector("notion").state == "completed"
 
 
 def test_project_document_sync_does_not_call_notion_when_claimlatch_blocks(tmp_path) -> None:
