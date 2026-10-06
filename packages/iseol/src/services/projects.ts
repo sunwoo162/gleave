@@ -32,6 +32,8 @@ export type StoredProject = {
   notionPageId?: string;
   notionChannelId?: string;
   notionLastEditedTime?: string;
+  eeeeProjectId?: string;
+  eeeeProjectRevision?: string;
 };
 
 const DATA_FILE = resolve(process.cwd(), "data", "projects.json");

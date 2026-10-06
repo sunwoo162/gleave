@@ -12,13 +12,16 @@ from app.api.service import ApiFlowService
 from app.assistant.models import CapabilitySelection
 from app.assistant.service import AssistantRouteResult, AssistantService
 from app.coordinator.service import Coordinator
+from app.domain.errors import ApprovalError
 from app.design.references import DesignService, ReferencePack
 from app.design.visual_verify import VisualReport
 from app.integrations.contracts import ProjectBriefV1, ProjectOutcomeReportV1
+from app.integrations.contracts import GithubReviewResultV1
 from app.memory.models import MemoryRecord
 from app.mobile.bridge import MobileBridge, MobileBridgeError
 from app.project_runtime.documents import ProjectDocumentService
-from app.project_runtime.models import ProjectDocumentSyncResult, ProjectProfile
+from app.project_runtime.evidence import ProjectEvidenceService
+from app.project_runtime.models import ProjectDocumentSyncResult, ProjectEvidenceIngestionResult, ProjectProfile
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -308,7 +311,12 @@ def _authorize_mobile(bridge: MobileBridge, token: str | None) -> dict[str, str]
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
-def build_api_router(flow: ApiFlowService) -> APIRouter:
+def build_api_router(
+    flow: ApiFlowService,
+    evidence: ProjectEvidenceService | None = None,
+    *,
+    iseol_bridge_token: str | None = None,
+) -> APIRouter:
     router = APIRouter(prefix="/api")
 
     @router.post("/requests", response_model=RequestResponse)
@@ -343,6 +351,26 @@ def build_api_router(flow: ApiFlowService) -> APIRouter:
             raise HTTPException(status_code=409, detail="Outcome project does not match the route")
         return flow.coordinator.record_project_outcome(payload)
 
+    @router.post(
+        "/projects/{project_id}/evidence/github-review",
+        response_model=ProjectEvidenceIngestionResult,
+    )
+    def ingest_github_review_evidence(
+        project_id: str,
+        payload: GithubReviewResultV1,
+        bridge_token: str | None = Header(default=None, alias="X-Gleave-Bridge-Token"),
+    ) -> ProjectEvidenceIngestionResult:
+        if iseol_bridge_token is not None and bridge_token != iseol_bridge_token:
+            raise HTTPException(status_code=401, detail="ISEOL bridge token is invalid")
+        if payload.project_id != project_id:
+            raise HTTPException(status_code=409, detail="Evidence project does not match the route")
+        if evidence is None:
+            raise HTTPException(status_code=503, detail="Project evidence service is unavailable")
+        try:
+            return evidence.ingest_github_review(payload)
+        except ApprovalError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @router.get("/memory", response_model=list[MemoryRecord])
     def search_memory(
         query: str = Query(default="", max_length=500),
@@ -370,7 +398,7 @@ def build_api_router(flow: ApiFlowService) -> APIRouter:
     def promote_memory(
         memory_id: str, payload: MemoryPromotionPayload
     ) -> MemoryRecord:
-        return flow.coordinator.memory.promote(
+        return flow.coordinator.promote_memory(
             memory_id,
             actor=payload.actor,
             evidence_ids=payload.evidence_ids,

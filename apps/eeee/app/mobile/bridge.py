@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import secrets
 import sqlite3
 from collections.abc import Mapping
@@ -57,8 +58,17 @@ class MobileBridge:
                     created_at TEXT NOT NULL,
                     revoked_at TEXT
                 );
+                CREATE TABLE IF NOT EXISTS mobile_events (
+                    cursor INTEGER PRIMARY KEY,
+                    kind TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
+            self._cursor = connection.execute(
+                "SELECT COALESCE(MAX(cursor), 0) FROM mobile_events"
+            ).fetchone()[0]
 
     def issue_pairing_code(self) -> dict[str, str]:
         self._require_enabled()
@@ -121,12 +131,27 @@ class MobileBridge:
 
     def publish(self, kind: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         with self._lock:
-            self._cursor += 1
+            created_at = _iso(_utc_now())
+            with self._connect() as connection:
+                self._cursor = int(
+                    connection.execute(
+                        "SELECT COALESCE(MAX(cursor), 0) + 1 FROM mobile_events"
+                    ).fetchone()[0]
+                )
+                connection.execute(
+                    "INSERT INTO mobile_events (cursor, kind, payload_json, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (self._cursor, kind, json.dumps(dict(payload), ensure_ascii=False), created_at),
+                )
+                connection.execute(
+                    "DELETE FROM mobile_events WHERE cursor <= ?",
+                    (self._cursor - self.event_limit,),
+                )
             event = {
                 "cursor": self._cursor,
                 "kind": kind,
                 "payload": dict(payload),
-                "createdAt": _iso(_utc_now()),
+                "createdAt": created_at,
             }
             self._events.append(event)
             if len(self._events) > self.event_limit:
@@ -135,9 +160,27 @@ class MobileBridge:
 
     def events_after(self, cursor: int = 0) -> dict[str, Any]:
         with self._lock:
+            try:
+                with self._connect() as connection:
+                    rows = connection.execute(
+                        "SELECT cursor, kind, payload_json, created_at FROM mobile_events "
+                        "WHERE cursor > ? ORDER BY cursor ASC LIMIT ?",
+                        (cursor, self.event_limit),
+                    ).fetchall()
+                events = [
+                    {
+                        "cursor": row["cursor"],
+                        "kind": row["kind"],
+                        "payload": json.loads(row["payload_json"]),
+                        "createdAt": row["created_at"],
+                    }
+                    for row in rows
+                ]
+            except sqlite3.OperationalError:
+                events = [event for event in self._events if event["cursor"] > cursor]
             return {
                 "cursor": self._cursor,
-                "events": [event for event in self._events if event["cursor"] > cursor],
+                "events": events,
             }
 
     def status(self) -> dict[str, Any]:

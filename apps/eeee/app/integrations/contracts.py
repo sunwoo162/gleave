@@ -31,6 +31,20 @@ VerificationDecision = Literal["PASS", "WARN", "BLOCK"]
 PromotionState = Literal["candidate", "active", "superseded", "revoked"]
 
 
+class GithubReviewResultV1(ContractModel):
+    schema_version: Literal[1] = Field(alias="schemaVersion")
+    project_id: str = Field(alias="projectId", min_length=1)
+    project_revision: str = Field(alias="projectRevision", min_length=1)
+    repository: str = Field(min_length=3)
+    pull_number: int = Field(alias="pullNumber", ge=1)
+    head_sha: str = Field(alias="headSha", min_length=7)
+    review_status: Literal["passed", "warned", "failed"] = Field(alias="reviewStatus")
+    findings_count: int = Field(alias="findingsCount", ge=0)
+    checks: list[dict[str, Any]]
+    source: Literal["iseol-github-review"]
+    generated_at: datetime = Field(alias="generatedAt")
+
+
 class ProjectOutcomeReportV1(ContractModel):
     schema_version: Literal[1] = Field(alias="schemaVersion")
     project_id: str = Field(alias="projectId", min_length=1)

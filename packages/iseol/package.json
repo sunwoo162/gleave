@@ -38,6 +38,7 @@
                     "google:auth":  "tsx scripts/google-calendar-auth.ts",
                     "github:webhooks":  "tsx scripts/register-automation-webhooks.ts",
                     "review:install-workflows":  "tsx scripts/install-review-workflows.ts",
+                    "review:standalone":  "tsx scripts/iseol-github-review-worker.ts",
                     "chatgpt:web:smoke":  "tsx scripts/chatgpt-web-browser-smoke.ts",
                     "idea-lab:live:smoke":  "tsx scripts/idea-lab-live-smoke.ts",
                     "iseol:runtime":  "tsx scripts/iseol-runtime-host.ts",

@@ -24,3 +24,17 @@ def test_mobile_pairing_persists_only_authorized_device_state(tmp_path) -> None:
         assert "invalid or revoked" in str(exc)
     else:  # pragma: no cover - protects the authorization boundary
         raise AssertionError("revoked mobile tokens must not authorize")
+
+
+def test_events_survive_desktop_restart_and_resume_from_cursor(tmp_path) -> None:
+    path = tmp_path / "state.sqlite3"
+    bridge = MobileBridge(path)
+    bridge.init()
+    first = bridge.publish("project.started", {"projectId": "project-1"})
+    bridge.publish("project.completed", {"projectId": "project-1"})
+
+    reopened = MobileBridge(path)
+    reopened.init()
+
+    resumed = reopened.events_after(first["cursor"])
+    assert [event["kind"] for event in resumed["events"]] == ["project.completed"]

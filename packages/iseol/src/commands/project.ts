@@ -408,6 +408,8 @@ export async function handleProjectCommand(interaction: ChatInputCommandInteract
         notionPageId: notionPage.id,
         notionChannelId: spec.id,
         notionLastEditedTime: notionSnapshot.last_edited_time,
+        eeeeProjectId: config.eeeeProjectId || undefined,
+        eeeeProjectRevision: config.eeeeProjectRevision || undefined,
       });
       storedProjectId = storedProject.id;
 

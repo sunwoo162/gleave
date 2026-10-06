@@ -32,6 +32,7 @@ from app.oss.researcher import GitHubResearcher
 from app.project_runtime.provisioner import ProjectProvisioner
 from app.project_runtime.connectors import build_default_connectors
 from app.project_runtime.documents import ProjectDocumentService
+from app.project_runtime.evidence import ProjectEvidenceService
 from app.storage.sqlite import SQLiteStore
 from app.trust.gate import TrustGate
 
@@ -110,6 +111,7 @@ def create_app(
         engine_version=app_settings.claim_latch_version,
         current_revision_resolver=_current_project_revision(store),
     )
+    coordinator.trust_gate = trust_gate
     configured_notion = notion_client
     if configured_notion is None and app_settings.notion_token and app_settings.notion_parent_page_id:
         configured_notion = NotionClient(
@@ -118,12 +120,14 @@ def create_app(
             base_url=app_settings.notion_api_base,
             api_version=app_settings.notion_api_version,
         )
-    project_documents = ProjectDocumentService(store, configured_notion, trust_gate)
+    project_documents = ProjectDocumentService(store, configured_notion, trust_gate, mobile_bridge.publish)
+    project_evidence = ProjectEvidenceService(store, trust_gate, mobile_bridge.publish)
     application.state.coordinator = coordinator
     application.state.claim_latch_client = claim_latch_client
     application.state.trust_gate = trust_gate
     application.state.mobile_bridge = mobile_bridge
     application.state.project_documents = project_documents
+    application.state.project_evidence = project_evidence
     runtime = agent_runtime or OpenHandsRuntime(
         api_key=app_settings.llm_api_key,
         model=app_settings.llm_model,
@@ -136,6 +140,8 @@ def create_app(
         runtime,
         capability_router=capability_router,
         project_provisioner=project_provisioner,
+        trust_gate=trust_gate,
+        event_publisher=mobile_bridge.publish,
     )
     application.state.api_flow = api_flow
     assistant_service = AssistantService(
@@ -144,6 +150,7 @@ def create_app(
         store=store,
         settings=app_settings,
         provisioner=project_provisioner,
+        event_publisher=mobile_bridge.publish,
     )
     application.state.assistant_service = assistant_service
     design_service = DesignService(store=store)
@@ -177,7 +184,13 @@ def create_app(
     application.include_router(build_router(coordinator))
     application.include_router(build_assistant_router(assistant_service, project_documents))
     application.include_router(build_mobile_router(mobile_bridge, assistant_service, mobile_snapshot))
-    application.include_router(build_api_router(api_flow))
+    application.include_router(
+        build_api_router(
+            api_flow,
+            project_evidence,
+            iseol_bridge_token=app_settings.iseol_bridge_token,
+        )
+    )
     application.include_router(build_design_router(design_service))
     static_dir = Path(__file__).parent / "static"
     application.mount("/static", StaticFiles(directory=static_dir), name="static")

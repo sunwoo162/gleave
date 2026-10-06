@@ -8,6 +8,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $eeee = Join-Path $root "apps\eeee"
 $iseol = Join-Path $root "packages\iseol"
 $adapter = Join-Path $root "integrations\claimlatch-adapter"
+$mobile = Join-Path $root "apps\mobile"
 $python = if ($PythonPath) { $PythonPath } else { Join-Path $root ".venv\Scripts\python.exe" }
 if (-not (Test-Path -LiteralPath $python)) {
     $python = (Get-Command python).Source
@@ -56,6 +57,15 @@ Push-Location $adapter
 try {
     npm test --silent
     if ($LASTEXITCODE -ne 0) { throw "ClaimLatch adapter verification failed." }
+} finally {
+    Pop-Location
+}
+
+Push-Location $mobile
+try {
+    & (Join-Path $iseol "node_modules\.bin\tsc.cmd") -p (Join-Path $mobile "tsconfig.json") --noEmit
+    & (Join-Path $iseol "node_modules\.bin\tsx.cmd") --test (Join-Path $mobile "tests\client.test.ts")
+    if ($LASTEXITCODE -ne 0) { throw "Mobile client verification failed." }
 } finally {
     Pop-Location
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Callable
 from typing import Literal
 from uuid import uuid4
 
@@ -36,29 +37,39 @@ class AssistantService:
         store: SQLiteStore,
         settings: Settings,
         provisioner: ProjectProvisioner,
+        event_publisher: Callable[[str, dict[str, object]], object] | None = None,
     ) -> None:
         self.router = router
         self.coordinator = coordinator
         self.store = store
         self.settings = settings
         self.provisioner = provisioner
+        self.event_publisher = event_publisher
 
     def route(self, text: str, workspace: str | None = None) -> AssistantRouteResult:
         request = AssistantRequest(raw_text=text)
         selection = self.router.select(request)
+        self._publish(
+            "assistant.route.started",
+            {"capabilityId": selection.capability_id, "selectionStatus": selection.status},
+        )
         if selection.status == "needs_clarification":
-            return AssistantRouteResult(
+            result = AssistantRouteResult(
                 status="needs_clarification",
                 selection=selection,
                 message="어떤 작업 영역인지 조금 더 알려줘.",
             )
+            self._publish("assistant.route.completed", _event_payload(result))
+            return result
 
         if selection.capability_id != "project-execution":
-            return AssistantRouteResult(
+            result = AssistantRouteResult(
                 status="selected",
                 selection=selection,
                 message=f"Selected EEEE capability: {selection.capability_id}",
             )
+            self._publish("assistant.route.completed", _event_payload(result))
+            return result
 
         brief = parse_request(text)
         project_id = f"project-{uuid4().hex}"
@@ -75,7 +86,7 @@ class AssistantService:
             memory_ids=project_brief.retrieved_memory_ids,
             qa_baseline_ids=project_brief.qa_baseline_ids,
         )
-        return AssistantRouteResult(
+        result = AssistantRouteResult(
             status=provisioned.status,
             selection=selection,
             message="Project Runtime이 생성되었고 외부 연결 상태를 확인해야 해.",
@@ -83,6 +94,12 @@ class AssistantService:
             project_profile=provisioned.profile,
             missing_connectors=provisioned.missing_connectors,
         )
+        self._publish(
+            "project.created",
+            {"projectId": project_id, "projectRevision": project.revision, "status": result.status},
+        )
+        self._publish("assistant.route.completed", _event_payload(result))
+        return result
 
     def get_project_profile(self, project_id: str) -> ProjectProfile:
         return self.store.get_project_profile(project_id)
@@ -95,4 +112,16 @@ class AssistantService:
         except ValueError as exc:
             raise ValueError("Workspace must be inside the configured workspace root") from exc
         return candidate
+
+    def _publish(self, kind: str, payload: dict[str, object]) -> None:
+        if self.event_publisher is not None:
+            self.event_publisher(kind, payload)
+
+
+def _event_payload(result: AssistantRouteResult) -> dict[str, object]:
+    return {
+        "status": result.status,
+        "capabilityId": result.selection.capability_id,
+        "projectId": result.project_id,
+    }
 

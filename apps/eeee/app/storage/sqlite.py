@@ -12,7 +12,7 @@ from app.harness.state import AgentTask, ProjectState
 from app.domain.errors import AlreadyApprovedError, ApprovalError, CandidateSetChangedError
 from app.integrations.claimlatch_audit import ClaimLatchAuditStore
 from app.memory.store import MemoryStore
-from app.project_runtime.models import ProjectDocumentRecord, ProjectProfile
+from app.project_runtime.models import ProjectDocumentRecord, ProjectEvidenceRecord, ProjectProfile
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -266,6 +266,12 @@ class SQLiteStore:
                     project_revision TEXT NOT NULL, document_json TEXT NOT NULL,
                     PRIMARY KEY (project_id, provider)
                 );
+                CREATE TABLE IF NOT EXISTS project_evidence (
+                    project_id TEXT NOT NULL, evidence_type TEXT NOT NULL,
+                    reference TEXT NOT NULL, project_revision TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    PRIMARY KEY (project_id, evidence_type, reference)
+                );
                 CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, request_id TEXT NOT NULL,
                     state TEXT NOT NULL, message TEXT NOT NULL, required_action TEXT,
@@ -502,6 +508,41 @@ class SQLiteStore:
         if row is None:
             raise KeyError(f"Project document not found: {project_id}/{provider}")
         return ProjectDocumentRecord.model_validate_json(row["document_json"])
+
+    def save_project_evidence(self, evidence: ProjectEvidenceRecord) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO project_evidence "
+                "(project_id, evidence_type, reference, project_revision, evidence_json) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(project_id, evidence_type, reference) DO UPDATE SET "
+                "project_revision = excluded.project_revision, evidence_json = excluded.evidence_json",
+                (
+                    evidence.project_id,
+                    evidence.evidence_type,
+                    evidence.reference,
+                    evidence.project_revision,
+                    evidence.model_dump_json(),
+                ),
+            )
+
+    def get_project_evidence(
+        self, project_id: str, evidence_type: str, reference: str
+    ) -> ProjectEvidenceRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT evidence_json FROM project_evidence "
+                "WHERE project_id = ? AND evidence_type = ? AND reference LIKE ?",
+                (project_id, evidence_type, f"%:{reference}"),
+            ).fetchone()
+            if row is None:
+                row = connection.execute(
+                    "SELECT evidence_json FROM project_evidence "
+                    "WHERE project_id = ? AND evidence_type = ? AND json_extract(evidence_json, '$.payload.headSha') = ?",
+                    (project_id, evidence_type, reference),
+                ).fetchone()
+        if row is None:
+            raise KeyError(f"Project evidence not found: {project_id}/{evidence_type}/{reference}")
+        return ProjectEvidenceRecord.model_validate_json(row["evidence_json"])
 
     def update_project_revision(self, project_id: str, revision: str) -> Project:
         with self._connect() as connection:

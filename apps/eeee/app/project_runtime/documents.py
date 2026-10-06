@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
+from collections.abc import Callable
 from typing import Protocol
 
 from app.integrations.notion_client import NotionPageRef
@@ -24,26 +25,35 @@ class NotionDocumentAdapter(Protocol):
 class ProjectDocumentService:
     """Synchronize a Project Runtime profile into Notion after trust verification."""
 
-    def __init__(self, store: SQLiteStore, notion: NotionDocumentAdapter | None, trust_gate: object) -> None:
+    def __init__(
+        self,
+        store: SQLiteStore,
+        notion: NotionDocumentAdapter | None,
+        trust_gate: object,
+        event_publisher: Callable[[str, dict[str, object]], object] | None = None,
+    ) -> None:
         self.store = store
         self.notion = notion
         self.trust_gate = trust_gate
+        self.event_publisher = event_publisher
 
     def sync(self, profile: ProjectProfile) -> ProjectDocumentSyncResult:
         if self.notion is None:
-            return ProjectDocumentSyncResult(
+            result = ProjectDocumentSyncResult(
                 status="awaiting_configuration",
                 project_id=profile.project_id,
                 provider="notion",
                 revision=profile.project_revision,
                 reason="Notion token and parent page are not configured",
             )
+            self._publish("project.document.awaiting_configuration", profile, result)
+            return result
 
         lines = _document_lines(profile)
         content_hash = _content_hash(lines)
         existing = self._existing(profile.project_id)
         if existing is not None and existing.content_hash == content_hash:
-            return ProjectDocumentSyncResult(
+            result = ProjectDocumentSyncResult(
                 status="unchanged",
                 project_id=profile.project_id,
                 provider="notion",
@@ -51,6 +61,8 @@ class ProjectDocumentService:
                 document=existing,
                 reason="The same project revision is already synchronized",
             )
+            self._publish("project.document.unchanged", profile, result)
+            return result
 
         trust = self.trust_gate.verify_action(
             subject_id=f"{profile.project_id}:notion",
@@ -60,7 +72,7 @@ class ProjectDocumentService:
             payload={"provider": "notion", "contentHash": content_hash},
         )
         if trust.decision != "PASS":
-            return ProjectDocumentSyncResult(
+            result = ProjectDocumentSyncResult(
                 status="blocked",
                 project_id=profile.project_id,
                 provider="notion",
@@ -69,6 +81,8 @@ class ProjectDocumentService:
                 trust=trust,
                 reason=trust.reason,
             )
+            self._publish("project.document.blocked", profile, result)
+            return result
 
         if existing is None:
             page = self.notion.create_project_page(profile, lines)
@@ -83,7 +97,7 @@ class ProjectDocumentService:
                 }
             )
         self.store.save_project_document(document)
-        return ProjectDocumentSyncResult(
+        result = ProjectDocumentSyncResult(
             status="synced",
             project_id=profile.project_id,
             provider="notion",
@@ -91,12 +105,32 @@ class ProjectDocumentService:
             document=document,
             trust=trust,
         )
+        self._publish("project.document.synced", profile, result)
+        return result
 
     def _existing(self, project_id: str) -> ProjectDocumentRecord | None:
         try:
             return self.store.get_project_document(project_id, "notion")
         except KeyError:
             return None
+
+    def _publish(
+        self,
+        kind: str,
+        profile: ProjectProfile,
+        result: ProjectDocumentSyncResult,
+    ) -> None:
+        if self.event_publisher is not None:
+            self.event_publisher(
+                kind,
+                {
+                    "projectId": profile.project_id,
+                    "projectRevision": profile.project_revision,
+                    "provider": "notion",
+                    "status": result.status,
+                    "reason": result.reason,
+                },
+            )
 
 
 def _document_record(

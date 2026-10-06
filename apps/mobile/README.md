@@ -17,3 +17,8 @@ The Desktop remains authoritative. Mobile can use the same EEEE secretary and
 project capabilities by forwarding commands through the paired Desktop bridge.
 This directory is the deployment boundary for a future standalone
 `gleave-mobile` repository.
+
+The typed transport client is in `src/client.ts`. It exposes pairing, state,
+assistant commands, cursor-based polling, and SSE consumption. A native shell
+may provide a secure `TokenStore`; the client itself never receives provider
+tokens or a project database.

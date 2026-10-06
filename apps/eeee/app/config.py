@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     notion_parent_page_id: str | None = None
     notion_api_base: str = "https://api.notion.com"
     notion_api_version: str = "2026-03-11"
+    iseol_bridge_token: str | None = None
     claim_latch_adapter_url: str | None = None
     claim_latch_policy_version: str = "claimlatch-policy-v1"
     claim_latch_adapter_version: str = "eeee-claimlatch-adapter-v1"

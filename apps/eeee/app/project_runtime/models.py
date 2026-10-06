@@ -15,6 +15,7 @@ ConnectorState = Literal[
 ]
 ProvisioningStatus = Literal["ready", "awaiting_configuration", "blocked"]
 DocumentSyncStatus = Literal["synced", "unchanged", "awaiting_configuration", "blocked"]
+EvidenceIngestionStatus = Literal["accepted", "duplicate", "blocked"]
 
 
 class ConnectorBinding(BaseModel):
@@ -99,6 +100,27 @@ class ProjectDocumentSyncResult(BaseModel):
     provider: Literal["notion"]
     revision: str = Field(min_length=1)
     document: ProjectDocumentRecord | None = None
+    trust: Any | None = None
+    reason: str | None = None
+
+
+class ProjectEvidenceRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    project_id: str = Field(min_length=1, alias="projectId")
+    evidence_type: Literal["github-review"] = Field(alias="evidenceType")
+    project_revision: str = Field(min_length=1, alias="projectRevision")
+    reference: str = Field(min_length=1)
+    content_hash: str = Field(min_length=1, alias="contentHash")
+    payload: dict[str, Any]
+    created_at: datetime = Field(alias="createdAt")
+
+
+class ProjectEvidenceIngestionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    status: EvidenceIngestionStatus
+    evidence: ProjectEvidenceRecord | None = None
     trust: Any | None = None
     reason: str | None = None
 

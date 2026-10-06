@@ -6,6 +6,8 @@ Every message is revision-bound and carries a schema version. Unknown versions, 
 
 `qa-report.v1.schema.json` is the ISEOL-owned independent QA result. It is embedded in a project outcome report and is eligible for EEEE memory ingestion only when its status is `PASS`.
 
+`github-review-result.v1.schema.json` is the ISEOL GitHub CI/code-review result delivered to EEEE as durable project evidence.
+
 The Project Runtime is the shared identity boundary: `projectId` and `projectRevision`
 must be carried by ISEOL task results, GitHub CI/code-review evidence, Notion document
 events, deterministic QA, ClaimLatch envelopes, and memory candidates. Notion is the

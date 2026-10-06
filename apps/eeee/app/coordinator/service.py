@@ -22,6 +22,7 @@ from app.memory.store import MemoryStore
 from app.oss.github_client import ResearchError
 from app.oss.researcher import GitHubResearcher
 from app.storage.sqlite import SQLiteStore
+from app.trust.gate import TrustGate
 from app.workspace.artifacts import WorkspaceArtifactWriter
 from app.workflow.approvals import ApprovalService
 from app.workflow.planner import parse_request
@@ -36,6 +37,7 @@ class Coordinator:
         researcher: GitHubResearcher | None = None,
         verifier: WorkspaceVerifier | None = None,
         memory_store: MemoryStore | None = None,
+        trust_gate: TrustGate | None = None,
     ):
         self.store = store
         self.worker = worker or DeterministicFakeWorker()
@@ -46,6 +48,7 @@ class Coordinator:
         self.memory = memory_store or MemoryStore(store.path)
         self.memory_pipeline = OutcomeMemoryPipeline(self.memory)
         self.claimlatch_audits = store.claimlatch_audits
+        self.trust_gate = trust_gate
 
     def record_project_outcome(
         self, outcome_report: ProjectOutcomeReportV1
@@ -61,7 +64,41 @@ class Coordinator:
                 "Cannot ingest project outcome: stale project revision "
                 f"{outcome_report.project_revision}; current is {project.revision}"
             )
+        if project is not None and self.trust_gate is not None:
+            trust = self.trust_gate.verify_claim(
+                subject_id=f"{outcome_report.project_id}:outcome",
+                project_id=outcome_report.project_id,
+                project_revision=outcome_report.project_revision,
+                claim=(
+                    "ISEOL independently verified the project outcome: "
+                    f"status={outcome_report.status}, "
+                    f"qa={outcome_report.qa_report.get('status', 'unknown')}"
+                ),
+                action="memory.outcome.ingest",
+            )
+            if trust.decision == "BLOCKED":
+                raise ApprovalError(f"ClaimLatch blocked project outcome ingestion: {trust.reason}")
         return self.memory_pipeline.ingest(outcome_report)
+
+    def promote_memory(
+        self, memory_id: str, *, actor: str, evidence_ids: list[str]
+    ) -> MemoryRecord:
+        record = self.memory.get(memory_id)
+        try:
+            project = self.store.get_project(record.source_project_id)
+        except KeyError:
+            project = None
+        if project is not None and self.trust_gate is not None:
+            trust = self.trust_gate.verify_action(
+                subject_id=f"{memory_id}:promotion",
+                project_id=project.id,
+                project_revision=project.revision,
+                action="memory.promote",
+                payload={"memoryId": memory_id, "evidenceIds": list(evidence_ids)},
+            )
+            if trust.decision == "BLOCKED":
+                raise ApprovalError(f"ClaimLatch blocked memory promotion: {trust.reason}")
+        return self.memory.promote(memory_id, actor=actor, evidence_ids=evidence_ids)
 
     def build_project_brief(self, project_id: str, request_id: str) -> ProjectBriefV1:
         """Retrieve verified memory before ISEOL decomposes the next project."""
