@@ -24,3 +24,24 @@ The widget's EEEE input calls `POST /api/assistant/route`, then refreshes
 visible together. `POST /api/desktop/pairing/code` is the only Desktop action
 needed to begin Mobile pairing. It returns a short-lived six-digit code, never
 an access token; Mobile remains a remote client of Desktop.
+
+To produce a Windows executable locally, install PyInstaller in the build
+environment and run:
+
+```powershell
+python -m pip install -e ".\\apps\\eeee[desktop,desktop-build]"
+.\scripts\build-desktop.ps1
+```
+
+The output is `build\desktop\GleaveDesktop.exe`. The executable still uses the
+user's local `.gleave` data directory and provider configuration; packaging does
+not add a hosted service or move secrets into the binary.
+
+The packaged runtime can be smoke-tested without opening a window:
+
+```powershell
+build\desktop\GleaveDesktop.exe --self-test
+```
+
+Exit code `0` confirms that the embedded loopback API started and its health
+endpoint returned `ok`.

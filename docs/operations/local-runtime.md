@@ -5,10 +5,14 @@ EEEE is the local entrypoint. It starts a FastAPI coordinator bound to `127.0.0.
 From the repository root:
 
 ```powershell
-python -m pip install -e ".\apps\eeee[desktop]"
+python -m pip install -e ".\apps\eeee[desktop,desktop-build]"
 .\scripts\dev-up.ps1
 # Or launch the local API and PySide6 EEEE widget together:
 .\scripts\desktop-up.ps1
+# To build a local Windows executable:
+.\scripts\build-desktop.ps1
+# After building, verify the packaged runtime without opening the window:
+build\desktop\GleaveDesktop.exe --self-test
 ```
 
 The widget is always-on-top, draggable, interactive, and can hide to or restore from the system tray. It talks only to the local EEEE API. Notion, Google Calendar, and GitHub CI/code review are optional provider adapters; ISEOL runs locally and Discord is not a required runtime dependency.

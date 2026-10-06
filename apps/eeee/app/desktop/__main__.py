@@ -1,3 +1,4 @@
+import argparse
 import os
 
 from app.config import Settings
@@ -23,7 +24,30 @@ def connect_desktop_api(
         raise
 
 
-def main() -> int:
+def run_self_test(settings: Settings | None = None) -> int:
+    """Start the embedded runtime, verify health, and exit without opening Qt."""
+
+    runtime = EmbeddedApiRuntime(settings=settings)
+    try:
+        client = PetApiClient(runtime.start(), os.getenv("PET_PROJECT_ID", "default"))
+        return 0 if client.get_health().get("status") == "ok" else 1
+    except Exception:
+        return 1
+    finally:
+        runtime.stop()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Gleave Desktop")
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="start the embedded API, verify /health, and exit",
+    )
+    arguments = parser.parse_args(argv)
+    if arguments.self_test:
+        return run_self_test()
+
     from PySide6.QtWidgets import QApplication
 
     from app.desktop.window import PetWindow

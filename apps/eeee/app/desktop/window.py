@@ -14,9 +14,8 @@ class PetWindow:
     def __new__(cls, client: PetApiClient, *, initial_error: str | None = None):
         try:
             from PySide6.QtCore import Qt, QTimer
-            from PySide6.QtGui import QFont
+            from PySide6.QtGui import QAction, QFont
             from PySide6.QtWidgets import (
-                QAction,
                 QComboBox,
                 QHBoxLayout,
                 QLabel,
