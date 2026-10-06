@@ -1,5 +1,6 @@
 """Coordinator-owned project and task state transitions."""
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.coordinator.fake_worker import DeterministicFakeWorker
@@ -14,7 +15,7 @@ from app.domain.models import (
 )
 from app.execution.runner import WorkspaceExecutionBlocked
 from app.execution.verifier import WorkspaceVerifier
-from app.integrations.contracts import ProjectOutcomeReportV1
+from app.integrations.contracts import ProjectBriefV1, ProjectOutcomeReportV1
 from app.memory.models import MemoryRecord
 from app.memory.pipeline import OutcomeMemoryPipeline
 from app.memory.store import MemoryStore
@@ -51,6 +52,32 @@ class Coordinator:
         """Ingest ISEOL's independently verified project result into EEEE memory."""
 
         return self.memory_pipeline.ingest(outcome_report)
+
+    def build_project_brief(self, project_id: str, request_id: str) -> ProjectBriefV1:
+        """Retrieve verified memory before ISEOL decomposes the next project."""
+
+        project = self.store.get_project(project_id)
+        request = self.store.get_request(request_id)
+        memories = self.memory.search(request.raw_text, limit=50)
+        memory_ids = [memory.id for memory in memories]
+        qa_baseline_ids = [
+            memory.id
+            for memory in memories
+            if memory.kind in {"qa_rule", "regression_rule"}
+        ]
+        return ProjectBriefV1(
+            schema_version=1,
+            project_id=project.id,
+            request_id=request_id,
+            user_goal=request.goal,
+            scope=[request.target_type, *request.acceptance_criteria],
+            constraints=request.constraints,
+            preferences={},
+            schedule={},
+            retrieved_memory_ids=memory_ids,
+            qa_baseline_ids=qa_baseline_ids,
+            created_at=datetime.now(timezone.utc),
+        )
 
     def create_project(
         self, project_id: str, name: str, workspace: str, revision: str = "initial"

@@ -15,11 +15,16 @@ class PetWindow:
             from PySide6.QtCore import Qt, QTimer
             from PySide6.QtGui import QFont
             from PySide6.QtWidgets import (
+                QAction,
                 QComboBox,
                 QHBoxLayout,
                 QLabel,
                 QLineEdit,
+                QMenu,
                 QPushButton,
+                QApplication,
+                QStyle,
+                QSystemTrayIcon,
                 QVBoxLayout,
                 QWidget,
             )
@@ -36,6 +41,8 @@ class PetWindow:
                 self._drag_offset = None
                 self._busy = False
                 self._closing = False
+                self._quit_requested = False
+                self._tray = None
                 self._task_runner = QtTaskRunner(parent=self)
                 self.setWindowTitle("Development Pet")
                 self.setWindowFlags(
@@ -92,6 +99,10 @@ class PetWindow:
                 self.workspace_button.clicked.connect(self._open_workspace)
                 root.addWidget(self.workspace_button)
 
+                self.hide_button = QPushButton("Hide to tray")
+                self.hide_button.clicked.connect(self.hide_to_tray)
+                root.addWidget(self.hide_button)
+
                 self.setStyleSheet(
                     "QWidget { background: #fff8ef; border: 1px solid #d7b98e; "
                     "border-radius: 16px; color: #3d2b1f; }"
@@ -102,6 +113,7 @@ class PetWindow:
                 )
                 self._timer = QTimer(self)
                 self._timer.timeout.connect(self.refresh)
+                self._setup_tray(QApplication, QStyle, QSystemTrayIcon, QAction, QMenu)
                 if initial_error:
                     self._render({"state": "blocked", "message": initial_error})
                 else:
@@ -123,10 +135,54 @@ class PetWindow:
                 super().mouseReleaseEvent(event)
 
             def closeEvent(self, event):
+                if self._tray is not None and not self._quit_requested:
+                    self.hide_to_tray()
+                    event.ignore()
+                    return
                 self._closing = True
                 self._timer.stop()
                 self._task_runner.shutdown()
+                if self._tray is not None:
+                    self._tray.hide()
                 super().closeEvent(event)
+
+            def _setup_tray(self, QApplication, QStyle, QSystemTrayIcon, QAction, QMenu):
+                if not QSystemTrayIcon.isSystemTrayAvailable():
+                    return
+                self._double_click_reason = QSystemTrayIcon.ActivationReason.DoubleClick
+                icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+                self._tray = QSystemTrayIcon(icon, self)
+                self._tray.setToolTip("EEEE local assistant")
+                menu = QMenu(self)
+                show_action = QAction("Show EEEE", self)
+                show_action.triggered.connect(self.restore_from_tray)
+                hide_action = QAction("Hide", self)
+                hide_action.triggered.connect(self.hide_to_tray)
+                quit_action = QAction("Quit", self)
+                quit_action.triggered.connect(self.request_quit)
+                menu.addAction(show_action)
+                menu.addAction(hide_action)
+                menu.addSeparator()
+                menu.addAction(quit_action)
+                self._tray.setContextMenu(menu)
+                self._tray.activated.connect(self._on_tray_activated)
+                self._tray.show()
+
+            def _on_tray_activated(self, reason):
+                if self._tray is not None and reason == self._double_click_reason:
+                    self.restore_from_tray()
+
+            def hide_to_tray(self):
+                self.hide()
+
+            def restore_from_tray(self):
+                self.showNormal()
+                self.raise_()
+                self.activateWindow()
+
+            def request_quit(self):
+                self._quit_requested = True
+                self.close()
 
             def refresh(self):
                 self._submit(self.client.get_state, "Connecting to the local coordinator...")

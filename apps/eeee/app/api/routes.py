@@ -8,6 +8,8 @@ from app.api.service import ApiFlowService
 from app.coordinator.service import Coordinator
 from app.design.references import DesignService, ReferencePack
 from app.design.visual_verify import VisualReport
+from app.integrations.contracts import ProjectBriefV1, ProjectOutcomeReportV1
+from app.memory.models import MemoryRecord
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -62,6 +64,17 @@ class ApprovalResponse(BaseModel):
     decision: Decision
     run_id: str
     decision_events: list[dict[str, object]] = Field(default_factory=list)
+
+
+class MemoryPromotionPayload(BaseModel):
+    actor: str = Field(min_length=1)
+    evidence_ids: list[str] = Field(alias="evidenceIds", min_length=1)
+
+    model_config = {"populate_by_name": True}
+
+
+class MemoryRevokePayload(BaseModel):
+    reason: str = Field(min_length=1)
 
 
 class DesignReferencePayload(BaseModel):
@@ -155,6 +168,59 @@ def build_api_router(flow: ApiFlowService) -> APIRouter:
             **snapshot.model_dump(mode="python"),
             work_plan=build_work_plan(snapshot.brief, snapshot.candidates),
         )
+
+    @router.get("/requests/{request_id}/project-brief", response_model=ProjectBriefV1)
+    def get_project_brief(request_id: str) -> ProjectBriefV1:
+        project_id, _workspace = flow.store.get_request_context(request_id)
+        return flow.coordinator.build_project_brief(project_id, request_id)
+
+    @router.post(
+        "/projects/{project_id}/outcomes",
+        response_model=list[MemoryRecord],
+    )
+    def ingest_project_outcome(
+        project_id: str, payload: ProjectOutcomeReportV1
+    ) -> list[MemoryRecord]:
+        if payload.project_id != project_id:
+            raise HTTPException(status_code=409, detail="Outcome project does not match the route")
+        return flow.coordinator.record_project_outcome(payload)
+
+    @router.get("/memory", response_model=list[MemoryRecord])
+    def search_memory(
+        query: str = Query(default="", max_length=500),
+        project_type: str | None = Query(default=None, alias="projectType", max_length=120),
+        technology: str | None = Query(default=None, max_length=120),
+        feature: str | None = Query(default=None, max_length=120),
+        risk: str | None = Query(default=None, max_length=120),
+        workstream: str | None = Query(default=None, max_length=120),
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> list[MemoryRecord]:
+        scope = {
+            key: value
+            for key, value in {
+                "projectType": project_type,
+                "technology": technology,
+                "feature": feature,
+                "risk": risk,
+                "workstream": workstream,
+            }.items()
+            if value is not None
+        }
+        return flow.coordinator.memory.search(query, scope=scope or None, limit=limit)
+
+    @router.post("/memory/{memory_id}/promote", response_model=MemoryRecord)
+    def promote_memory(
+        memory_id: str, payload: MemoryPromotionPayload
+    ) -> MemoryRecord:
+        return flow.coordinator.memory.promote(
+            memory_id,
+            actor=payload.actor,
+            evidence_ids=payload.evidence_ids,
+        )
+
+    @router.post("/memory/{memory_id}/revoke", response_model=MemoryRecord)
+    def revoke_memory(memory_id: str, payload: MemoryRevokePayload) -> MemoryRecord:
+        return flow.coordinator.memory.revoke(memory_id, reason=payload.reason)
 
     @router.post("/requests/{request_id}/research", response_model=ResearchResponse)
     def research_api_request(request_id: str) -> ResearchResponse:
