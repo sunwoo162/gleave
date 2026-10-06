@@ -18,6 +18,7 @@ dependencies = [
 [project.scripts]
 gleave = "app.main:run"
 oss-product-builder = "app.main:run"
+gleave-desktop = "app.desktop.__main__:main"
 
 [project.optional-dependencies]
 dev = [

@@ -7,9 +7,19 @@ From the repository root:
 ```powershell
 python -m pip install -e ".\apps\eeee[desktop]"
 .\scripts\dev-up.ps1
+# Or launch the local API and PySide6 EEEE widget together:
+.\scripts\desktop-up.ps1
 ```
 
 The widget is always-on-top, draggable, interactive, and can hide to or restore from the system tray. It talks only to the local EEEE API. Notion, Google Calendar, and GitHub CI/code review are optional provider adapters; ISEOL runs locally and Discord is not a required runtime dependency.
+
+Desktop's primary command surface is the EEEE input in the widget. It calls
+`POST /api/assistant/route`; after a project is created, Desktop refreshes
+`GET /api/desktop/state?projectId=...` and shows the Project Runtime state,
+ClaimLatch profile/health, and redacted lifecycle events. The local event journal
+is available to the shell through `GET /api/desktop/events`. Pairing starts only
+from the loopback-only `POST /api/desktop/pairing/code` route and returns a
+short-lived code without returning a Mobile access token.
 
 Desktop is the authoritative runtime. Mobile is distributed separately as a thin
 remote client: it pairs with a short-lived code, sends commands through the Desktop

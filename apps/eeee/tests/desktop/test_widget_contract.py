@@ -21,6 +21,11 @@ def test_desktop_companion_is_an_interactive_always_on_top_widget():
         assert hasattr(window, "hide_to_tray")
         assert hasattr(window, "restore_from_tray")
         assert hasattr(window, "request_quit")
+        assert hasattr(window, "assistant_input")
+        assert hasattr(window, "assistant_button")
+        assert hasattr(window, "trust_status")
+        assert hasattr(window, "pairing_button")
+        assert hasattr(window, "events_view")
 
         window.show()
         window.hide_to_tray()

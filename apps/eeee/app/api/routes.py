@@ -22,6 +22,8 @@ from app.mobile.bridge import MobileBridge, MobileBridgeError
 from app.project_runtime.documents import ProjectDocumentService
 from app.project_runtime.evidence import ProjectEvidenceService
 from app.project_runtime.models import ProjectDocumentSyncResult, ProjectEvidenceIngestionResult, ProjectProfile
+from app.storage.sqlite import SQLiteStore
+from app.trust.gate import TrustGate
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -302,6 +304,113 @@ def build_mobile_router(
         return StreamingResponse(generate(), media_type="text/event-stream")
 
     return router
+
+
+def build_desktop_router(
+    coordinator: Coordinator,
+    store: SQLiteStore,
+    bridge: MobileBridge,
+    trust_gate: TrustGate,
+) -> APIRouter:
+    """Expose the local Desktop control-plane without leaking bridge secrets."""
+
+    router = APIRouter(prefix="/api/desktop")
+
+    @router.get("/state")
+    def desktop_state(
+        request: Request,
+        project_id: str | None = Query(default=None, alias="projectId"),
+    ) -> dict[str, object]:
+        _require_local_desktop(request)
+        events = _desktop_events(bridge, 0)["events"]
+        snapshot: dict[str, object] = {
+            "status": "ok",
+            "transport": "desktop-local",
+            "claimLatch": trust_gate.health_payload(),
+            "mobileBridge": bridge.status(),
+            "projectId": project_id,
+            "projectProfile": None,
+            "projectState": None,
+            "events": events[-20:],
+            "latestEventCursor": int(events[-1]["cursor"]) if events else 0,
+        }
+        if project_id is not None:
+            snapshot["projectProfile"] = store.get_project_profile(project_id).model_dump(
+                mode="json", by_alias=True
+            )
+            snapshot["projectState"] = coordinator.get_state(project_id).model_dump(
+                mode="json"
+            )
+        return snapshot
+
+    @router.get("/events")
+    def desktop_events(
+        request: Request,
+        cursor: int = Query(default=0, ge=0),
+    ) -> dict[str, object]:
+        _require_local_desktop(request)
+        return _desktop_events(bridge, cursor)
+
+    @router.post("/pairing/code")
+    def desktop_pairing_code(request: Request) -> dict[str, str]:
+        _require_local_desktop(request)
+        try:
+            return bridge.issue_pairing_code()
+        except MobileBridgeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return router
+
+
+def _require_local_desktop(request: Request) -> None:
+    if request.client is not None and request.client.host not in {
+        "127.0.0.1",
+        "::1",
+        "localhost",
+        "testclient",
+    }:
+        raise HTTPException(status_code=403, detail="Desktop control is local-only")
+
+
+def _desktop_events(bridge: MobileBridge, cursor: int) -> dict[str, object]:
+    batch = bridge.events_after(cursor)
+    return {
+        "cursor": batch["cursor"],
+        "events": [_redact_desktop_event(event) for event in batch["events"]],
+    }
+
+
+def _redact_desktop_event(event: object) -> dict[str, object]:
+    if not isinstance(event, dict):
+        return {"cursor": 0, "kind": "unknown", "payload": {}}
+    return {
+        "cursor": event.get("cursor", 0),
+        "kind": event.get("kind", "unknown"),
+        "createdAt": event.get("createdAt"),
+        "payload": _redact_desktop_value(event.get("payload", {})),
+    }
+
+
+def _redact_desktop_value(value: object) -> object:
+    sensitive = {
+        "accesstoken",
+        "apikey",
+        "authorization",
+        "pairingcode",
+        "password",
+        "prompt",
+        "rawtext",
+        "token",
+    }
+    if isinstance(value, dict):
+        return {
+            key: _redact_desktop_value(item)
+            for key, item in value.items()
+            if str(key).replace("_", "").lower() not in sensitive
+        }
+    if isinstance(value, list):
+        return [_redact_desktop_value(item) for item in value]
+    return value
 
 
 def _authorize_mobile(bridge: MobileBridge, token: str | None) -> dict[str, str]:

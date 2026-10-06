@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.desktop.client import PetApiClient
 from app.desktop.presentation import PetPresentation
+from app.desktop.session import DesktopSession
 from app.desktop.worker import QtTaskRunner
 
 
@@ -37,14 +38,16 @@ class PetWindow:
             def __init__(self):
                 super().__init__()
                 self.client = client
+                self.session = DesktopSession(client)
                 self.current_state: dict[str, object] = {}
+                self.desktop_snapshot: dict[str, object] = {}
                 self._drag_offset = None
                 self._busy = False
                 self._closing = False
                 self._quit_requested = False
                 self._tray = None
                 self._task_runner = QtTaskRunner(parent=self)
-                self.setWindowTitle("Development Pet")
+                self.setWindowTitle("EEEE • Gleave")
                 self.setWindowFlags(
                     Qt.WindowType.FramelessWindowHint
                     | Qt.WindowType.WindowStaysOnTopHint
@@ -71,6 +74,38 @@ class PetWindow:
                 self.detail.setWordWrap(True)
                 self.detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 root.addWidget(self.detail)
+
+                self.project_status = QLabel("Project: local default")
+                self.project_status.setWordWrap(True)
+                root.addWidget(self.project_status)
+                self.trust_status = QLabel("ClaimLatch: checking")
+                self.trust_status.setWordWrap(True)
+                root.addWidget(self.trust_status)
+                self.mobile_status = QLabel("Mobile bridge: available from Desktop")
+                self.mobile_status.setWordWrap(True)
+                root.addWidget(self.mobile_status)
+
+                assistant_row = QHBoxLayout()
+                self.assistant_input = QLineEdit()
+                self.assistant_input.setPlaceholderText("Ask EEEE what to do next...")
+                self.assistant_button = QPushButton("Ask EEEE")
+                self.assistant_button.clicked.connect(self._route_assistant)
+                assistant_row.addWidget(self.assistant_input)
+                assistant_row.addWidget(self.assistant_button)
+                root.addLayout(assistant_row)
+
+                pairing_row = QHBoxLayout()
+                self.pairing_button = QPushButton("Generate phone code")
+                self.pairing_button.clicked.connect(self._issue_pairing_code)
+                self.pairing_status = QLabel("No pairing code issued")
+                self.pairing_status.setWordWrap(True)
+                pairing_row.addWidget(self.pairing_button)
+                pairing_row.addWidget(self.pairing_status)
+                root.addLayout(pairing_row)
+
+                self.events_view = QLabel("No recent EEEE events")
+                self.events_view.setWordWrap(True)
+                root.addWidget(self.events_view)
 
                 request_row = QHBoxLayout()
                 self.request_input = QLineEdit()
@@ -185,12 +220,24 @@ class PetWindow:
                 self.close()
 
             def refresh(self):
-                self._submit(self.client.get_state, "Connecting to the local coordinator...")
+                def operation():
+                    legacy_state = self.client.get_state()
+                    if not hasattr(self.client, "get_desktop_state"):
+                        return legacy_state
+                    snapshot = self.session.refresh()
+                    project_state = snapshot.get("projectState")
+                    if isinstance(project_state, dict):
+                        return {**snapshot, **project_state}
+                    return {**snapshot, **legacy_state}
+
+                self._submit(operation, "Connecting to the local EEEE coordinator...")
 
             def _update_controls(self):
                 view = PetPresentation.from_view_model(self.current_state)
                 self.request_input.setEnabled(not self._busy)
                 self.request_button.setEnabled(not self._busy)
+                self.assistant_input.setEnabled(not self._busy)
+                self.assistant_button.setEnabled(not self._busy)
                 self.candidate_select.setEnabled(not self._busy)
                 self.approve_button.setEnabled(
                     not self._busy and view.show_approval and self.candidate_select.count() > 0
@@ -235,8 +282,25 @@ class PetWindow:
                     failure(exc)
 
             def _render(self, payload: dict[str, object]):
-                self.current_state = payload
-                view = PetPresentation.from_view_model(payload)
+                self.desktop_snapshot = payload if "claimLatch" in payload else self.desktop_snapshot
+                project_state = payload.get("projectState")
+                view_payload = (
+                    {**payload, **project_state}
+                    if isinstance(project_state, dict)
+                    else payload
+                )
+                if not isinstance(view_payload.get("state"), str):
+                    assistant_route = payload.get("assistantRoute")
+                    if isinstance(assistant_route, dict):
+                        view_payload = {
+                            **view_payload,
+                            "state": "idle",
+                            "message": assistant_route.get(
+                                "message", "EEEE completed the request."
+                            ),
+                        }
+                self.current_state = view_payload
+                view = PetPresentation.from_view_model(view_payload)
                 self.character.setText({
                     "sleepy": "😴",
                     "curious": "🔎",
@@ -250,6 +314,7 @@ class PetWindow:
                 }[view.expression])
                 self.headline.setText(view.headline)
                 self.detail.setText(view.detail)
+                self._render_desktop_status(payload)
                 candidates = payload.get("candidates", [])
                 self.candidate_select.clear()
                 for candidate in candidates if isinstance(candidates, list) else []:
@@ -258,6 +323,60 @@ class PetWindow:
                         if isinstance(repository, dict) and isinstance(repository.get("full_name"), str):
                             self.candidate_select.addItem(repository["full_name"])
                 self._update_controls()
+
+            def _render_desktop_status(self, payload: dict[str, object]) -> None:
+                project_id = payload.get("projectId")
+                self.project_status.setText(
+                    f"Project: {project_id}" if isinstance(project_id, str) else "Project: none selected"
+                )
+                claim_latch = payload.get("claimLatch")
+                if isinstance(claim_latch, dict):
+                    status = claim_latch.get("status", "unknown")
+                    profile = claim_latch.get("profileVersion", "unknown")
+                    self.trust_status.setText(f"ClaimLatch: {status} • {profile}")
+                mobile = payload.get("mobileBridge")
+                if isinstance(mobile, dict):
+                    paired = mobile.get("pairedDevices", 0)
+                    self.mobile_status.setText(f"Mobile bridge: {paired} paired device(s)")
+                events = payload.get("events")
+                if isinstance(events, list) and events:
+                    labels = [
+                        str(event.get("kind", "event"))
+                        for event in events[-4:]
+                        if isinstance(event, dict)
+                    ]
+                    self.events_view.setText("Recent: " + " • ".join(labels))
+                elif "claimLatch" in payload:
+                    self.events_view.setText("Recent: no EEEE lifecycle events")
+
+            def _route_assistant(self):
+                text = self.assistant_input.text().strip()
+                if not text:
+                    return
+
+                def on_success(payload):
+                    self.assistant_input.clear()
+                    self._render(payload)
+
+                self._submit(
+                    lambda: self.session.route(text),
+                    "EEEE is selecting the best capability...",
+                    on_success=on_success,
+                )
+
+            def _issue_pairing_code(self):
+                def on_success(payload):
+                    code = payload.get("code")
+                    expires = payload.get("expiresAt")
+                    if isinstance(code, str):
+                        suffix = f" (expires {expires})" if isinstance(expires, str) else ""
+                        self.pairing_status.setText(f"Phone code: {code}{suffix}")
+
+                self._submit(
+                    self.session.issue_pairing_code,
+                    "Issuing a short-lived phone pairing code...",
+                    on_success=on_success,
+                )
 
             def _create_request(self):
                 text = self.request_input.text().strip()
@@ -312,3 +431,7 @@ class PetWindow:
                         os.startfile(path)
 
         return _Window()
+
+
+# Keep the old import working while presenting the product as Gleave Desktop.
+DesktopWindow = PetWindow

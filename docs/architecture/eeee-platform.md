@@ -157,6 +157,12 @@ uses `POST /api/projects/{projectId}/documents/sync`; ISEOL review delivery uses
 `github-review-result.v1` contract. Both external writes pass through the
 ClaimLatch trust boundary before persistence or provider execution.
 
+The Desktop shell calls `POST /api/assistant/route` as the primary local
+assistant entrypoint, then reads `GET /api/desktop/state` and
+`GET /api/desktop/events` for the redacted Project Runtime, ClaimLatch, and
+lifecycle view. It can issue a short-lived Mobile pairing code through
+`POST /api/desktop/pairing/code`; the code is not an access token.
+
 The Mobile client calls `POST /api/mobile/assistant/route` for the same EEEE
 secretary and project capabilities available on Desktop, reads
 `GET /api/mobile/state` for the current snapshot, and subscribes to

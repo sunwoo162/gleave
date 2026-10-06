@@ -12,6 +12,7 @@ from app.api.routes import (
     build_api_router,
     build_assistant_router,
     build_design_router,
+    build_desktop_router,
     build_mobile_router,
     build_router,
 )
@@ -185,6 +186,7 @@ def create_app(
     application.include_router(build_router(coordinator))
     application.include_router(build_assistant_router(assistant_service, project_documents))
     application.include_router(build_mobile_router(mobile_bridge, assistant_service, mobile_snapshot))
+    application.include_router(build_desktop_router(coordinator, store, mobile_bridge, trust_gate))
     application.include_router(
         build_api_router(
             api_flow,

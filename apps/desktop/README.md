@@ -13,6 +13,14 @@ kernel and desktop distribution can be tested together. This directory is the
 deployment boundary for a future standalone `gleave-desktop` repository.
 
 The embedded runtime is started from `apps/eeee/app/desktop`. Desktop owns the
-SQLite database, EEEE/ISEOL runtime, ClaimLatch adapter, and Mobile bridge. A
-packaged desktop shell should launch the API on loopback, expose the widget,
-and pass only the loopback URL plus the pairing-code action to Mobile.
+SQLite database, EEEE/ISEOL runtime, ClaimLatch adapter, and Mobile bridge. The
+development shell can be launched with `scripts/desktop-up.ps1` or
+`gleave-desktop`; it starts the API on loopback and opens the EEEE widget in one
+process.
+
+The widget's EEEE input calls `POST /api/assistant/route`, then refreshes
+`GET /api/desktop/state` so the selected Project Runtime, ClaimLatch
+(`claimlatch-v0.2.0`) health, redacted lifecycle events, and connector state are
+visible together. `POST /api/desktop/pairing/code` is the only Desktop action
+needed to begin Mobile pairing. It returns a short-lived six-digit code, never
+an access token; Mobile remains a remote client of Desktop.
