@@ -35,17 +35,21 @@ EEEE request
 
 Code behavior is verified deterministically. Natural-language factual claims and release reports are verified through ClaimLatch. A verification failure never becomes a trusted release or active memory rule.
 
+ClaimLatch text verification returns the versioned `VerificationEnvelopeV1`. EEEE stores the request payload hash, report ID, optional receipt ID, policy version, adapter version, ClaimLatch version, project revision, and full envelope in the same local SQLite database as project state and memory. Replaying one subject at the same revision with a different payload or policy metadata is rejected; a stale revision is rejected before the adapter is called when a current-revision resolver is configured.
+
+ISEOL QA is an independent release gate, not an Agent completion message. `QaPlan` creates QA-0 through QA-5 checks, `QaOrchestrator` requires executable command evidence, `EvidenceLedger` records exit status and stdout/stderr hashes, and `ReleaseGate` requires matching current revisions across QA, deterministic verification, and ClaimLatch before release.
+
 ## Source repositories
 
 The imported source revisions and exclusions are recorded in repository-manifest.json. The original source folders remain preserved outside this aggregate repository.
 
 ## Current status
 
-The first local vertical slice is implemented. The highest-priority implementation work is now available:
+The first local vertical slice is implemented. The completed P0 path includes:
 
-1. ClaimLatch local Adapter.
-2. EEEE persistent memory storage, retrieval, and promotion.
-3. ISEOL independent QA results connected to EEEE memory.
+1. ClaimLatch local Adapter with versioned envelopes and durable audit records.
+2. EEEE persistent memory storage, retrieval, promotion, and stale-outcome rejection.
+3. ISEOL independent QA planning, executable evidence ledger, stale-revision checks, and release gate.
 
 The desktop companion is an always-on-top PySide6 widget with tray hide/restore/quit behavior. EEEE owns the local API, approvals, project memory, and user-facing state; ISEOL owns Agent decomposition, Workstream/team composition, execution, handoffs, integration, QA, and evaluation.
 

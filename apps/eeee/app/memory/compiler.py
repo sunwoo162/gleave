@@ -20,9 +20,10 @@ class MemoryCompiler:
                 value["evidenceIds"] = outcome_report.qa_report.get("evidenceIds", [])
             if "verificationIds" not in value:
                 value["verificationIds"] = [
-                    str(item["id"])
+                    str(item.get("id") or item.get("claimLatchReportId"))
                     for item in outcome_report.claim_latch_reports
-                    if isinstance(item, dict) and item.get("id")
+                    if isinstance(item, dict)
+                    and (item.get("id") or item.get("claimLatchReportId"))
                 ]
             if "sourceArtifactIds" not in value:
                 value["sourceArtifactIds"] = [

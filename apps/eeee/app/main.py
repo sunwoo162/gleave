@@ -15,6 +15,7 @@ from app.design.references import DesignService
 from app.domain.errors import ApprovalError
 from app.execution.runner import WorkspaceCommandRunner
 from app.execution.verifier import WorkspaceVerifier
+from app.integrations.claimlatch_client import ClaimLatchClient
 from app.oss.github_client import GitHubClient
 from app.oss.researcher import GitHubResearcher
 from app.storage.sqlite import SQLiteStore
@@ -56,7 +57,18 @@ def create_app(
             app_settings.app_name,
             str(default_workspace),
         )
+    claim_latch_client = None
+    if app_settings.claim_latch_adapter_url:
+        claim_latch_client = ClaimLatchClient(
+            app_settings.claim_latch_adapter_url,
+            audit_store=store.claimlatch_audits,
+            policy_version=app_settings.claim_latch_policy_version,
+            adapter_version=app_settings.claim_latch_adapter_version,
+            claim_latch_version=app_settings.claim_latch_version,
+            current_revision_resolver=_current_project_revision(store),
+        )
     application.state.coordinator = coordinator
+    application.state.claim_latch_client = claim_latch_client
     runtime = agent_runtime or OpenHandsRuntime(
         api_key=app_settings.llm_api_key,
         model=app_settings.llm_model,
@@ -90,6 +102,16 @@ def create_app(
         return FileResponse(static_dir / "index.html")
 
     return application
+
+
+def _current_project_revision(store: SQLiteStore):
+    def resolve(project_id: str) -> str | None:
+        try:
+            return store.get_project(project_id).revision
+        except KeyError:
+            return None
+
+    return resolve
 
 
 def run(host: str = "127.0.0.1", port: int = 8000) -> None:

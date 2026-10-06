@@ -10,6 +10,7 @@ from app.design.references import ReferencePack
 from app.design.visual_verify import VisualReport
 from app.harness.state import AgentTask, ProjectState
 from app.domain.errors import AlreadyApprovedError, ApprovalError, CandidateSetChangedError
+from app.integrations.claimlatch_audit import ClaimLatchAuditStore
 from app.memory.store import MemoryStore
 from app.domain.models import (
     CandidateScore,
@@ -198,6 +199,7 @@ class RunExecutionClaim:
 class SQLiteStore:
     def __init__(self, path: str | Path):
         self.path = Path(path)
+        self.claimlatch_audits = ClaimLatchAuditStore(self.path)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path)
@@ -283,6 +285,9 @@ class SQLiteStore:
         # EEEE memory intentionally shares the durable state database so a
         # restart cannot separate project state from the evidence-backed memory.
         MemoryStore(self.path).init()
+        # ClaimLatch audit evidence lives beside project state and memory so
+        # verification cannot silently disappear between local restarts.
+        self.claimlatch_audits.init()
 
     def save_request(self, brief: RequestBrief) -> str:
         request_id = str(uuid4())

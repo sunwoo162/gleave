@@ -45,14 +45,26 @@ def _gate_failures(report: ProjectOutcomeReportV1) -> Iterable[str]:
         yield "independent QA did not pass"
     if qa.get("independent") is not True:
         yield "QA report is not marked independent"
+    if qa.get("projectId") and qa.get("projectId") != report.project_id:
+        yield "QA report belongs to a different project"
+    if qa.get("projectRevision") and qa.get("projectRevision") != report.project_revision:
+        yield "QA report is stale for the outcome revision"
 
     if report.memory_candidates and not report.claim_latch_reports:
         yield "memory candidates have no ClaimLatch report"
     for claim_latch_report in report.claim_latch_reports:
         if not _is_pass(claim_latch_report.get("decision")):
             yield "a ClaimLatch report is not PASS"
-        if not str(claim_latch_report.get("id", "")).strip():
+        report_id = claim_latch_report.get("id") or claim_latch_report.get("claimLatchReportId")
+        if not str(report_id or "").strip():
             yield "a ClaimLatch report has no stable id"
+        if claim_latch_report.get("projectId") and claim_latch_report.get("projectId") != report.project_id:
+            yield "ClaimLatch report belongs to a different project"
+        if (
+            claim_latch_report.get("projectRevision")
+            and claim_latch_report.get("projectRevision") != report.project_revision
+        ):
+            yield "ClaimLatch report is stale for the outcome revision"
 
 
 def _is_pass(value: object) -> bool:

@@ -102,22 +102,12 @@ async function route(
   try {
     const result = await verifyText(payload);
     const decision = result.report.passed ? "PASS" : "BLOCK";
+    const envelope = toVerificationEnvelope(payload, result, decision);
     if (decision === "BLOCK") {
-      writeJson(response, 422, {
-        decision,
-        report: result.report,
-        claimLatchReportId: result.claimLatchReportId,
-        receiptId: result.receiptId,
-      });
+      writeJson(response, 422, envelope);
       return;
     }
-    writeJson(response, 200, {
-      decision,
-      answer: result.answer,
-      report: result.report,
-      claimLatchReportId: result.claimLatchReportId,
-      receiptId: result.receiptId,
-    });
+    writeJson(response, 200, envelope);
   } catch (error) {
     writeJson(response, 502, {
       decision: "BLOCK",
@@ -169,5 +159,30 @@ export function createClaimLatchTextHandler(gate: ClaimLatchLike): TextVerificat
       claimLatchReportId: reportId,
       receiptId: null,
     };
+  };
+}
+
+function toVerificationEnvelope(
+  input: TextVerificationInput,
+  result: TextVerificationResult,
+  decision: "PASS" | "BLOCK",
+): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    subjectId: input.subjectId,
+    projectId: input.projectId,
+    projectRevision: input.projectRevision,
+    subjectType: input.subjectType,
+    claims: result.report.claims,
+    evidence: [],
+    deterministicChecks: result.report.violations.map((violation) => ({
+      name: violation.code,
+      status: decision,
+      reason: violation.message,
+    })),
+    decision,
+    claimLatchReportId: result.claimLatchReportId,
+    receiptId: result.receiptId,
+    createdAt: result.report.generatedAt,
   };
 }

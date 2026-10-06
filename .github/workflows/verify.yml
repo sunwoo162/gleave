@@ -39,6 +39,6 @@ jobs:
         shell: pwsh
         run: |
           npm run build --silent --prefix packages/iseol
-          node --import tsx --test packages/iseol/tests/integrations/contracts.test.ts packages/iseol/tests/qa/independent-runner.test.ts packages/iseol/tests/agent-organization/team-composer.test.ts packages/iseol/tests/agent-organization/qa-baseline.test.ts
+          node --import tsx --test packages/iseol/tests/integrations/contracts.test.ts packages/iseol/tests/qa/independent-runner.test.ts packages/iseol/tests/qa/qa-orchestrator.test.ts packages/iseol/tests/qa/release-gate.test.ts packages/iseol/tests/agent-organization/team-composer.test.ts packages/iseol/tests/agent-organization/qa-baseline.test.ts
       - name: Test ClaimLatch adapter
         run: npm test --silent --prefix integrations/claimlatch-adapter

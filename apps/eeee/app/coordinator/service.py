@@ -45,12 +45,22 @@ class Coordinator:
         self.verifier = verifier
         self.memory = memory_store or MemoryStore(store.path)
         self.memory_pipeline = OutcomeMemoryPipeline(self.memory)
+        self.claimlatch_audits = store.claimlatch_audits
 
     def record_project_outcome(
         self, outcome_report: ProjectOutcomeReportV1
     ) -> list[MemoryRecord]:
         """Ingest ISEOL's independently verified project result into EEEE memory."""
 
+        try:
+            project = self.store.get_project(outcome_report.project_id)
+        except KeyError:
+            project = None
+        if project is not None and project.revision != outcome_report.project_revision:
+            raise ApprovalError(
+                "Cannot ingest project outcome: stale project revision "
+                f"{outcome_report.project_revision}; current is {project.revision}"
+            )
         return self.memory_pipeline.ingest(outcome_report)
 
     def build_project_brief(self, project_id: str, request_id: str) -> ProjectBriefV1:

@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     data_dir: Path = Path(".oss-builder")
     workspace_root: Path = Path("workspaces")
     github_token: str | None = None
+    claim_latch_adapter_url: str | None = None
+    claim_latch_policy_version: str = "claimlatch-policy-v1"
+    claim_latch_adapter_version: str = "eeee-claimlatch-adapter-v1"
+    claim_latch_version: str = "0.3.86"
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None

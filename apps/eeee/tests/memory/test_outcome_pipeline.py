@@ -74,6 +74,16 @@ def test_iseol_independent_qa_result_becomes_eeee_memory_candidate(tmp_path) -> 
     ]
 
 
+def test_memory_ingest_rejects_outcome_from_stale_project_revision(tmp_path) -> None:
+    store = SQLiteStore(tmp_path / "state.sqlite3")
+    store.init()
+    store.create_project("project-1", "Project", str(tmp_path / "workspace"), revision="rev-2")
+    coordinator = Coordinator(store)
+
+    with pytest.raises(ApprovalError, match="stale project revision"):
+        coordinator.record_project_outcome(_outcome())
+
+
 @pytest.mark.parametrize(
     ("qa_status", "independent", "claim_latch_decision", "deterministic_status"),
     [

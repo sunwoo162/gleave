@@ -38,6 +38,8 @@ try {
     node --import tsx --test `
         tests/integrations/contracts.test.ts `
         tests/qa/independent-runner.test.ts `
+        tests/qa/qa-orchestrator.test.ts `
+        tests/qa/release-gate.test.ts `
         tests/agent-organization/team-composer.test.ts `
         tests/agent-organization/qa-baseline.test.ts
     if ($LASTEXITCODE -ne 0) { throw "ISEOL verification failed." }

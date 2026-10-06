@@ -40,6 +40,8 @@ test("text verification endpoint returns a passing ClaimLatch report", async () 
     assert.equal(response.status, 200);
     const payload = (await response.json()) as Record<string, unknown>;
     assert.equal(payload.decision, "PASS");
+    assert.equal(payload.schemaVersion, 1);
+    assert.equal(payload.projectRevision, "rev-1");
     assert.equal(payload.claimLatchReportId, "report-1");
     assert.equal(payload.receiptId, "receipt-1");
   } finally {
@@ -76,6 +78,9 @@ test("blocked text verification is not released as a successful response", async
     const payload = (await response.json()) as Record<string, unknown>;
     assert.equal(payload.decision, "BLOCK");
     assert.equal(payload.answer, undefined);
+    assert.equal(payload.subjectId, "handoff-1");
+    assert.equal(payload.projectId, "project-1");
+    assert.equal(payload.projectRevision, "rev-1");
   } finally {
     await server.close();
   }
