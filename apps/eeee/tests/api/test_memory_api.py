@@ -47,7 +47,7 @@ def _outcome() -> ProjectOutcomeReportV1:
     )
 
 
-def test_memory_api_ingests_promotes_searches_and_revokes(tmp_path) -> None:
+def test_memory_api_rejects_unverified_outcome_before_memory_promotion(tmp_path) -> None:
     settings = Settings(data_dir=tmp_path / "data", workspace_root=tmp_path / "workspace")
     application = create_app(settings)
     client = TestClient(application)
@@ -56,25 +56,6 @@ def test_memory_api_ingests_promotes_searches_and_revokes(tmp_path) -> None:
         "/api/projects/project-api-1/outcomes",
         json=_outcome().model_dump(mode="json", by_alias=True),
     )
-    assert outcome_response.status_code == 200
-    assert outcome_response.json()[0]["status"] == "candidate"
-
+    assert outcome_response.status_code == 409
+    assert "ClaimLatch" in outcome_response.json()["detail"]
     assert client.get("/api/memory", params={"query": "smoke"}).json() == []
-
-    promote_response = client.post(
-        "/api/memory/memory-api-1/promote",
-        json={"actor": "user", "evidenceIds": ["qa-evidence-1"]},
-    )
-    assert promote_response.status_code == 200
-    assert promote_response.json()["status"] == "active"
-
-    search_response = client.get("/api/memory", params={"query": "smoke", "workstream": "release"})
-    assert search_response.status_code == 200
-    assert [item["id"] for item in search_response.json()] == ["memory-api-1"]
-
-    revoke_response = client.post(
-        "/api/memory/memory-api-1/revoke",
-        json={"reason": "The release process changed."},
-    )
-    assert revoke_response.status_code == 200
-    assert revoke_response.json()["status"] == "revoked"

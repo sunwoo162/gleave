@@ -6,6 +6,7 @@ from app.coordinator.service import Coordinator
 from app.domain.errors import ApprovalError
 from app.integrations.contracts import ProjectOutcomeReportV1
 from app.storage.sqlite import SQLiteStore
+from app.trust.gate import TrustGate
 
 
 def _outcome(
@@ -14,6 +15,7 @@ def _outcome(
     independent: bool = True,
     claim_latch_decision: str = "PASS",
     deterministic_status: str = "PASS",
+    qa_checks: list[dict[str, object]] | None = None,
 ) -> ProjectOutcomeReportV1:
     return ProjectOutcomeReportV1.model_validate(
         {
@@ -30,6 +32,7 @@ def _outcome(
                 "status": qa_status,
                 "independent": independent,
                 "evidenceIds": ["qa-evidence-1"],
+                "checks": qa_checks if qa_checks is not None else [{"status": "passed"}],
             },
             "claimLatchReports": [
                 {"id": "claimlatch-report-1", "decision": claim_latch_decision}
@@ -113,3 +116,21 @@ def test_memory_ingest_is_blocked_without_all_independent_release_gates(
                 deterministic_status=deterministic_status,
             )
         )
+
+
+def test_memory_ingest_requires_deterministic_qa_checks(tmp_path) -> None:
+    store = SQLiteStore(tmp_path / "state.sqlite3")
+    store.init()
+    coordinator = Coordinator(store)
+
+    with pytest.raises(ApprovalError, match="memory"):
+        coordinator.record_project_outcome(_outcome(qa_checks=[]))
+
+
+def test_configured_advisory_claimlatch_cannot_promote_memory(tmp_path) -> None:
+    store = SQLiteStore(tmp_path / "state.sqlite3")
+    store.init()
+    coordinator = Coordinator(store, trust_gate=TrustGate(None, mode="advisory"))
+
+    with pytest.raises(ApprovalError, match="memory"):
+        coordinator.record_project_outcome(_outcome())

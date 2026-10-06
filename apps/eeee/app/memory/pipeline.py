@@ -45,6 +45,13 @@ def _gate_failures(report: ProjectOutcomeReportV1) -> Iterable[str]:
         yield "independent QA did not pass"
     if qa.get("independent") is not True:
         yield "QA report is not marked independent"
+    checks = qa.get("checks")
+    if not isinstance(checks, list) or not checks or any(
+        not isinstance(check, dict)
+        or str(check.get("status", "")).strip().lower() not in {"passed", "skipped"}
+        for check in checks
+    ):
+        yield "QA report has no deterministic passing checks"
     if qa.get("projectId") and qa.get("projectId") != report.project_id:
         yield "QA report belongs to a different project"
     if qa.get("projectRevision") and qa.get("projectRevision") != report.project_revision:

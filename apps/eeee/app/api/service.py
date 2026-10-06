@@ -20,6 +20,8 @@ from app.trust.gate import TrustGate
 from app.workflow.planner import WorkPlan, build_work_plan
 from app.workspace.artifacts import WorkspaceArtifactWriter
 from app.project_runtime.provisioner import ProjectProvisioner
+from app.contracts import ExecutionEnvelope, ExecutionStatus
+from app.trust.pipeline import TrustPipeline
 
 
 class ApiFlowService:
@@ -41,6 +43,7 @@ class ApiFlowService:
         capability_router: CapabilityRouter | None = None,
         project_provisioner: ProjectProvisioner | None = None,
         trust_gate: TrustGate | None = None,
+        trust_pipeline: TrustPipeline | None = None,
         event_publisher: Callable[[str, dict[str, object]], object] | None = None,
     ) -> None:
         self.coordinator = coordinator
@@ -54,6 +57,9 @@ class ApiFlowService:
         self.capability_router = capability_router or CapabilityRouter(build_default_registry())
         self.project_provisioner = project_provisioner or ProjectProvisioner(store)
         self.trust_gate = trust_gate or TrustGate(None, mode="advisory")
+        self.trust_pipeline = trust_pipeline or TrustPipeline(
+            self.trust_gate, audit_store=store.claimlatch_audits
+        )
         self.event_publisher = event_publisher
 
     def create_request(self, text: str, workspace: str | None) -> tuple[str, RequestBrief, str]:
@@ -161,20 +167,30 @@ class ApiFlowService:
             events = list(result.events)
             project_id, _workspace = self.store.get_request_context(run.request_id)
             project = self.store.get_project(project_id)
-            trust = self.trust_gate.verify_claim(
-                subject_id=f"{run.id}:agent-result",
+            trust_envelope = ExecutionEnvelope(
+                execution_id=f"{run.id}:agent-result",
+                request_id=run.request_id,
                 project_id=project_id,
                 project_revision=project.revision,
-                claim=result.summary,
-                action="agent.result.release",
+                capability_id="agent-result",
+                tool_id="api-runtime",
+                actor="EEEE",
+                status=ExecutionStatus.RUNNING,
+                input={"summary": result.summary},
+                evidence_ids=tuple(
+                    str(event.get("evidenceId"))
+                    for event in result.events
+                    if isinstance(event, dict) and isinstance(event.get("evidenceId"), str)
+                ),
             )
+            trust = self.trust_pipeline.verify_claim(trust_envelope)
             events.append(
                 {
                     "type": "claimlatch",
                     "decision": trust.decision,
                     "reason": trust.reason,
-                    "profileVersion": trust.claim_latch_profile_version,
-                    "engineVersion": trust.claim_latch_version,
+                    "profileVersion": self.trust_gate.profile_version,
+                    "engineVersion": self.trust_gate.engine_version,
                 }
             )
             if trust.decision == "BLOCKED":

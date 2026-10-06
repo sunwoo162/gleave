@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.coordinator.fake_worker import DeterministicFakeWorker
+from app.contracts import ExecutionEnvelope, ExecutionStatus
 from app.domain.errors import ApprovalError
 from app.domain.models import (
     CandidateScore,
@@ -23,6 +24,7 @@ from app.oss.github_client import ResearchError
 from app.oss.researcher import GitHubResearcher
 from app.storage.sqlite import SQLiteStore
 from app.trust.gate import TrustGate
+from app.trust.pipeline import TrustPipeline
 from app.workspace.artifacts import WorkspaceArtifactWriter
 from app.workflow.approvals import ApprovalService
 from app.workflow.planner import parse_request
@@ -49,6 +51,10 @@ class Coordinator:
         self.memory_pipeline = OutcomeMemoryPipeline(self.memory)
         self.claimlatch_audits = store.claimlatch_audits
         self.trust_gate = trust_gate
+        self.trust_pipeline = (
+            TrustPipeline(trust_gate, audit_store=store.claimlatch_audits)
+            if trust_gate is not None else None
+        )
 
     def record_project_outcome(
         self, outcome_report: ProjectOutcomeReportV1
@@ -64,20 +70,27 @@ class Coordinator:
                 "Cannot ingest project outcome: stale project revision "
                 f"{outcome_report.project_revision}; current is {project.revision}"
             )
-        if project is not None and self.trust_gate is not None:
-            trust = self.trust_gate.verify_claim(
-                subject_id=f"{outcome_report.project_id}:outcome",
+        if self.trust_pipeline is not None:
+            envelope = ExecutionEnvelope(
+                execution_id=f"{outcome_report.project_id}:outcome",
+                request_id=outcome_report.request_id,
                 project_id=outcome_report.project_id,
                 project_revision=outcome_report.project_revision,
-                claim=(
-                    "ISEOL independently verified the project outcome: "
-                    f"status={outcome_report.status}, "
-                    f"qa={outcome_report.qa_report.get('status', 'unknown')}"
+                capability_id="project-outcome",
+                tool_id="iseol",
+                actor="ISEOL",
+                status=ExecutionStatus.RUNNING,
+                input={"status": outcome_report.status},
+                evidence_ids=tuple(
+                    item for item in outcome_report.qa_report.get("evidenceIds", [])
+                    if isinstance(item, str) and item.strip()
                 ),
-                action="memory.outcome.ingest",
             )
-            if trust.decision == "BLOCKED":
-                raise ApprovalError(f"ClaimLatch blocked project outcome ingestion: {trust.reason}")
+            trust = self.trust_pipeline.memory_promotion_gate(
+                outcome_report, envelope, outcome_report.qa_report
+            )
+            if trust.decision != "PASS":
+                raise ApprovalError(f"ClaimLatch blocked memory promotion: {trust.reason}")
         return self.memory_pipeline.ingest(outcome_report)
 
     def promote_memory(
@@ -96,7 +109,7 @@ class Coordinator:
                 action="memory.promote",
                 payload={"memoryId": memory_id, "evidenceIds": list(evidence_ids)},
             )
-            if trust.decision == "BLOCKED":
+            if trust.decision != "PASS":
                 raise ApprovalError(f"ClaimLatch blocked memory promotion: {trust.reason}")
         return self.memory.promote(memory_id, actor=actor, evidence_ids=evidence_ids)
 

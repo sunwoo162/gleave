@@ -40,6 +40,7 @@ from app.project_runtime.evidence import ProjectEvidenceService
 from app.project_view.service import ProjectViewService
 from app.storage.sqlite import SQLiteStore
 from app.trust.gate import TrustGate
+from app.trust.pipeline import TrustPipeline
 
 
 def create_app(
@@ -117,6 +118,9 @@ def create_app(
         current_revision_resolver=_current_project_revision(store),
     )
     coordinator.trust_gate = trust_gate
+    coordinator.trust_pipeline = TrustPipeline(
+        trust_gate, audit_store=store.claimlatch_audits
+    )
     configured_notion = notion_client
     if configured_notion is None and app_settings.notion_token and app_settings.notion_parent_page_id:
         configured_notion = NotionClient(
