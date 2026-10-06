@@ -89,6 +89,14 @@ Run the focused unified verification, or the full EEEE suite:
 
 No hosted login or central server is required. Optional Notion, mobile, calendar, and future channel adapters connect to the local core. Never commit `.env`, credentials, runtime databases, `node_modules`, virtual environments, `dist`, or `__pycache__`.
 
+## One-sentence project flow
+
+Open the local Gleave page, leave the language as Korean or select English, and enter a single request such as `Todo 앱 만들어줘` (or `Build a Todo app`). EEEE creates the local Project Runtime and opens its project map automatically. The map is the user-facing organization view: active and completed tasks, current commits, changed files, ClaimLatch status, independent QA, evidence, troubleshooting references, and retry/block states are shown from durable records rather than inferred UI text.
+
+The older request/research/approval panels remain available below the assistant launcher for detailed control. The default project workspace is the configured local workspace root; users can change it later through the existing request controls.
+
+Plugins are separate local tools, not bundled into the core. Ask EEEE to connect a plugin or use `/api/plugins`: inspect its manifest and permissions, approve it, run its local health check, then invoke it through the versioned JSON protocol. Plugin actions are isolated subprocesses and return the same `ExecutionEnvelope` used by the core. No login or hosted plugin registry is required.
+
 ## Upstream attribution
 
 The aggregate preserves the source projects as separate imported components. Their original repositories, licenses, remotes, branches, commits, and excluded runtime files are recorded in [`repository-manifest.json`](repository-manifest.json). The source folders remain preserved outside this checkout as upstream references.

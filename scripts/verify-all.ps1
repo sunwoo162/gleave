@@ -14,15 +14,16 @@ if (-not (Test-Path -LiteralPath $python)) {
     $python = (Get-Command python).Source
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $root "var") | Out-Null
+$pytestBase = Join-Path $root ("var\pytest-" + [guid]::NewGuid().ToString("N"))
 
 & (Join-Path $root "scripts\check-repository.ps1")
 
 Push-Location $eeee
 try {
     if ($Full) {
-        & $python -m pytest -q --basetemp (Join-Path $root "var\pytest") tests
+        & $python -m pytest -q --basetemp $pytestBase tests
     } else {
-        & $python -m pytest -q --basetemp (Join-Path $root "var\pytest-p0") `
+        & $python -m pytest -q --basetemp $pytestBase `
             tests/integrations `
             tests/memory `
             tests/trust `
