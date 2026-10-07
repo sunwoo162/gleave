@@ -234,6 +234,26 @@ def build_plugin_router(host: PluginHost) -> APIRouter:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @router.post("/{plugin_id}/pause")
+    def pause_plugin(plugin_id: str) -> dict[str, object]:
+        try:
+            return _plugin_registration_payload(host.pause(plugin_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/{plugin_id}/resume")
+    def resume_plugin(plugin_id: str) -> dict[str, object]:
+        try:
+            return _plugin_registration_payload(host.resume(plugin_id))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     @router.delete("/{plugin_id}", status_code=204)
     def remove_plugin(plugin_id: str) -> Response:
         try:

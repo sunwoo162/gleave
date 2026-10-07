@@ -53,6 +53,22 @@ def test_denied_approval_and_disconnected_invocation_are_truthful(host):
     assert "connected" in result.error.message
 
 
+def test_plugin_can_pause_and_resume_without_losing_registration(host):
+    host.connect("echo", approval=True)
+
+    paused = host.pause("echo")
+    assert paused.status == "paused"
+    blocked = host.invoke("echo", "echo", {"message": "must not run"})
+    assert blocked.status.value == "blocked"
+    assert blocked.error is not None
+    assert "paused" in blocked.error.message
+
+    resumed = host.resume("echo")
+    assert resumed.status == "connected"
+    result = host.invoke("echo", "echo", {"message": "runs again"})
+    assert result.status.value == "completed"
+
+
 def test_plugin_process_failure_isolated_in_failed_envelope(host):
     host.connect("echo", approval=True)
 

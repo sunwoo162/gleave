@@ -55,7 +55,7 @@ class PluginManifest(BaseModel):
         return self
 
 
-PluginStatus = Literal["available", "connected", "failed", "disabled"]
+PluginStatus = Literal["available", "connected", "paused", "failed", "disabled"]
 PluginHealthStatus = Literal["healthy", "unhealthy", "unavailable"]
 
 

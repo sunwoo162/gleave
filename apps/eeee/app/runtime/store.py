@@ -245,7 +245,7 @@ class PluginRegistration:
 
 
 _PLUGIN_STATUSES = frozenset(
-    {"available", "not_installed", "awaiting_authentication", "connected", "disabled", "failed"}
+        {"available", "not_installed", "awaiting_authentication", "connected", "paused", "disabled", "failed"}
 )
 
 

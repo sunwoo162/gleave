@@ -59,6 +59,8 @@ class PluginHost:
         self.executions.save(envelope)
         running: ExecutionEnvelope | None = None
         try:
+            if registration.status == "paused":
+                raise PermissionError("plugin is paused")
             if registration.status != "connected":
                 raise PermissionError("plugin is not connected")
             selected = next((item for item in manifest.actions if item.id == action), None)
@@ -86,6 +88,22 @@ class PluginHost:
 
     def disconnect(self, plugin_id: str):
         return self.registrations.set_status(plugin_id, "available")
+
+    def pause(self, plugin_id: str):
+        registration = self.registrations.get(plugin_id)
+        if registration.status != "connected":
+            raise PermissionError("only a connected plugin can be paused")
+        return self.registrations.set_status(plugin_id, "paused")
+
+    def resume(self, plugin_id: str):
+        registration = self.registrations.get(plugin_id)
+        if registration.status != "paused":
+            raise PermissionError("only a paused plugin can be resumed")
+        health = self._health_probe(self._manifest(plugin_id, registration.manifest))
+        if health.status != "healthy":
+            self.registrations.set_status(plugin_id, "failed")
+            raise RuntimeError(health.reason)
+        return self.registrations.set_status(plugin_id, "connected")
 
     def remove(self, plugin_id: str) -> None:
         self.registrations.remove(plugin_id)

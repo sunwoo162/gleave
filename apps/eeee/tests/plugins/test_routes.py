@@ -33,3 +33,13 @@ def test_local_plugin_routes_cover_discover_approve_invoke_and_health(tmp_path):
     assert invoked.status_code == 200
     assert invoked.json()["status"] == "completed"
     assert client.get("/api/plugins/echo/health").json()["status"] == "healthy"
+
+    paused = client.post("/api/plugins/echo/pause")
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+    blocked = client.post("/api/plugins/echo/invoke", json={"action": "echo", "input": {}})
+    assert blocked.status_code == 200
+    assert blocked.json()["status"] == "blocked"
+    resumed = client.post("/api/plugins/echo/resume")
+    assert resumed.status_code == 200
+    assert resumed.json()["status"] == "connected"
