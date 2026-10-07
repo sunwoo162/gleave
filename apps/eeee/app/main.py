@@ -37,6 +37,7 @@ from app.oss.github_client import GitHubClient
 from app.oss.researcher import GitHubResearcher
 from app.project_runtime.provisioner import ProjectProvisioner
 from app.project_runtime.iseol_bridge import IseolPlanBridge
+from app.planning.service import PlanningService
 from app.project_runtime.connectors import build_default_connectors
 from app.project_runtime.documents import ProjectDocumentService
 from app.project_runtime.evidence import ProjectEvidenceService
@@ -79,6 +80,7 @@ def create_app(
             )
         )
     coordinator = Coordinator(store, researcher=configured_researcher, verifier=verifier)
+    planning_service = PlanningService(store)
     capability_router = CapabilityRouter(build_default_registry())
     configured_connectors = {
         connector_id
@@ -181,7 +183,7 @@ def create_app(
         router=capability_router, coordinator=coordinator, store=store,
         settings=app_settings, provisioner=project_provisioner, memory=coordinator.memory,
         trust_gate=trust_gate, event_bus=event_bus, event_publisher=mobile_bridge.publish,
-        document_service=project_documents,
+        document_service=project_documents, planning_service=planning_service,
     )
     application.state.kernel = kernel
     application.state.execution_store = kernel.executions

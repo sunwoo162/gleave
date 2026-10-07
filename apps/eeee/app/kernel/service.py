@@ -14,6 +14,7 @@ from app.coordinator.service import Coordinator
 from app.kernel.capabilities import CapabilityOutcome, EnvelopeContext, LocalPlanningCapability, ProjectExecutionCapability
 from app.memory.store import MemoryStore
 from app.project_runtime.provisioner import ProjectProvisioner
+from app.planning.service import PlanningService
 from app.runtime.store import ExecutionStore, StaleProjectRevision
 from app.storage.sqlite import SQLiteStore
 from app.trust.gate import TrustGate
@@ -25,7 +26,7 @@ class KernelService:
         settings: Settings, provisioner: ProjectProvisioner, memory: MemoryStore | None = None,
         trust_gate: TrustGate | None = None, event_bus: LocalEventBus | None = None,
         event_publisher: Callable[[str, dict[str, object]], object] | None = None,
-        document_service: Any | None = None,
+        document_service: Any | None = None, planning_service: PlanningService | None = None,
     ) -> None:
         self.router = router
         self.coordinator = coordinator
@@ -33,6 +34,7 @@ class KernelService:
         self.memory = memory or coordinator.memory
         self.trust_gate = trust_gate or coordinator.trust_gate or TrustGate(None, mode="advisory")
         self.executions = ExecutionStore(store)
+        planning_service = planning_service or PlanningService(store)
         self.event_bus = event_bus or LocalEventBus()
         if event_publisher is not None:
             self.event_bus.subscribe(lambda event: event_publisher(
@@ -45,6 +47,7 @@ class KernelService:
                 handler = ProjectExecutionCapability(
                     descriptor, coordinator=coordinator, store=store, settings=settings,
                     provisioner=provisioner, document_service=document_service,
+                    planning_service=planning_service,
                 )
             elif descriptor.id in {"personal-secretary", "knowledge-documents", "presence"}:
                 handler = LocalPlanningCapability(descriptor)
@@ -181,6 +184,7 @@ class KernelService:
         self, parent: ExecutionEnvelope, outcome: CapabilityOutcome, selection: CapabilitySelection,
     ) -> ExecutionEnvelope:
         output = {**outcome.output, "selection": selection.model_dump(mode="json")}
+        output["responseVerification"] = self._verify_response(parent, output)
         parent = parent.transition(outcome.status, output=output, error=outcome.error)
         self._record(parent)
         if output.get("projectId"):
@@ -193,6 +197,43 @@ class KernelService:
             "projectId": output.get("projectId"), "executionId": parent.execution_id,
         })
         return parent
+
+    def _verify_response(self, parent: ExecutionEnvelope, output: dict[str, Any]) -> dict[str, Any]:
+        """Attach a ClaimLatch decision to every assistant route response."""
+        project_id = output.get("projectId")
+        project_revision = output.get("projectRevision")
+        if not isinstance(project_id, str) or not isinstance(project_revision, str):
+            blocked = str(output.get("status", "")).lower() in {"blocked", "failed"}
+            return {
+                "decision": "BLOCKED" if blocked else "WARN",
+                "reason": (
+                    "Assistant response is blocked; ClaimLatch response verification cannot release it"
+                    if blocked else
+                    "ClaimLatch response verification requires project identity; response is advisory"
+                ),
+                "profile_version": self.trust_gate.profile_version,
+                "subject_id": parent.execution_id,
+            }
+        claim = output.get("message") or output.get("status") or "Assistant route response"
+        check = self.trust_gate.verify_claim(
+            subject_id=parent.execution_id,
+            project_id=project_id,
+            project_revision=project_revision,
+            claim=str(claim),
+            action="assistant.response",
+        )
+        blocked = str(output.get("status", "")).lower() in {"blocked", "failed"}
+        return {
+            "decision": "BLOCKED" if blocked else check.decision,
+            "reason": (
+                f"Assistant response is blocked: {output.get('message', check.reason)}"
+                if blocked else check.reason
+            ),
+            "profile_version": check.claim_latch_profile_version,
+            "subject_id": parent.execution_id,
+            "claim_latch_receipt_id": check.receipt_id,
+            "claim_latch_report_id": check.report_id,
+        }
 
     def _record(self, envelope: ExecutionEnvelope) -> None:
         event = self._make_event(envelope, f"execution.{envelope.status.value}", {

@@ -26,6 +26,8 @@ class AssistantRouteResult(BaseModel):
     project_profile: ProjectProfile | None = None
     missing_connectors: list[str] = Field(default_factory=list)
     execution_plan_path: str | None = Field(default=None, alias="executionPlanPath")
+    planning_session_id: str | None = Field(default=None, alias="planningSessionId")
+    planning_handoff_id: str | None = Field(default=None, alias="planningHandoffId")
     response_verification: ResponseVerification
 
 
@@ -76,6 +78,8 @@ class AssistantService:
             project_profile=output.get("projectProfile"),
             missing_connectors=output.get("missingConnectors", []),
             execution_plan_path=output.get("executionPlanPath"),
+            planning_session_id=output.get("planningSessionId"),
+            planning_handoff_id=output.get("planningHandoffId"),
             response_verification=ResponseVerification.model_validate(
                 output.get("responseVerification", {
                     "decision": "WARN",

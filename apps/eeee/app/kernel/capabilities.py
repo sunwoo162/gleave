@@ -15,6 +15,7 @@ from app.contracts import ExecutionEnvelope, ExecutionError, ExecutionStatus, Si
 from app.coordinator.service import Coordinator
 from app.integrations.contracts import ProjectOutcomeReportV1
 from app.project_runtime.provisioner import ProjectProvisioner, is_todo_request
+from app.planning.service import PlanningService
 from app.runtime.store import StaleProjectRevision
 from app.storage.sqlite import SQLiteStore
 from app.workflow.planner import parse_request
@@ -72,7 +73,7 @@ class ProjectExecutionCapability:
     def __init__(
         self, descriptor: CapabilityDescriptor, *, coordinator: Coordinator,
         store: SQLiteStore, settings: Settings, provisioner: ProjectProvisioner,
-        document_service: Any | None = None,
+        document_service: Any | None = None, planning_service: PlanningService | None = None,
     ) -> None:
         self.descriptor = descriptor
         self.coordinator = coordinator
@@ -80,6 +81,7 @@ class ProjectExecutionCapability:
         self.settings = settings
         self.provisioner = provisioner
         self.document_service = document_service
+        self.planning_service = planning_service or PlanningService(store)
 
     def plan(self, request: AssistantRequest, context: AssistantContext) -> CapabilityPlan:
         project_id = f"project-{uuid4().hex}"
@@ -118,6 +120,15 @@ class ProjectExecutionCapability:
 
         def provision(_child: ExecutionEnvelope) -> CapabilityOutcome:
             project_brief = self.coordinator.build_project_brief(project.id, state.request_id)
+            planning_handoff = self.planning_service.quick_plan(
+                project, brief,
+                memory_ids=list(dict.fromkeys([
+                    *project_brief.retrieved_memory_ids, *envelope_context.assistant_context.memory_ids,
+                ])),
+                qa_baseline_ids=list(dict.fromkeys([
+                    *project_brief.qa_baseline_ids, *envelope_context.assistant_context.qa_baseline_ids,
+                ])),
+            )
             provisioned = self.provisioner.provision(
                 project, brief,
                 memory_ids=list(dict.fromkeys([
@@ -127,6 +138,7 @@ class ProjectExecutionCapability:
                     *project_brief.qa_baseline_ids, *envelope_context.assistant_context.qa_baseline_ids,
                 ])),
                 request_id=state.request_id,
+                planning_handoff=planning_handoff,
             )
             todo_run = None
             memory_records = []
@@ -218,6 +230,8 @@ class ProjectExecutionCapability:
                 "projectId": project.id, "projectProfile": profile.model_dump(mode="json", by_alias=True),
                 "missingConnectors": missing, "documentExecutionId": document_execution_id,
                 "executionPlanPath": provisioned.execution_plan_path,
+                "planningSessionId": planning_handoff.planning_session_id,
+                "planningHandoffId": planning_handoff.handoff_id,
                 "qaReportPath": todo_run.qa_report_path if todo_run is not None else None,
                 "releaseManifestPath": todo_run.release_manifest_path if todo_run is not None else None,
                 "qualityStatus": todo_run.status if todo_run is not None else None,

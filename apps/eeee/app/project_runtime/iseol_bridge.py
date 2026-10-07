@@ -8,6 +8,7 @@ from typing import Any
 
 from app.domain.models import RequestBrief
 from app.integrations.contracts import ProjectBriefV1
+from app.planning.models import PlanningHandoff
 
 
 Runner = Callable[[list[str], str, float], str]
@@ -38,6 +39,7 @@ class IseolPlanBridge:
         request: RequestBrief,
         memory_ids: list[str],
         qa_baseline_ids: list[str],
+        planning_handoff: PlanningHandoff | None = None,
     ) -> dict[str, Any]:
         brief = ProjectBriefV1(
             schema_version=1,
@@ -57,6 +59,10 @@ class IseolPlanBridge:
             "projectRevision": project_revision,
             "qualityMemory": [{"id": item, "kind": "qa_rule", "status": "active", "content": item, "scope": {}} for item in memory_ids],
         }
+        if planning_handoff is not None:
+            if planning_handoff.project_id != project_id or planning_handoff.project_revision != project_revision:
+                raise ValueError("planning handoff identity does not match ISEOL plan")
+            payload["planningHandoff"] = planning_handoff.model_dump(mode="json", by_alias=True)
         try:
             raw = self.runner(self.command, json.dumps(payload, ensure_ascii=False), self.timeout)
             value = json.loads(raw)
@@ -64,6 +70,8 @@ class IseolPlanBridge:
             raise RuntimeError("ISEOL planner is unavailable; project execution is blocked") from exc
         if not isinstance(value, dict) or value.get("schemaVersion") != 1 or value.get("projectId") != project_id or not isinstance(value.get("tasks"), list):
             raise RuntimeError("invalid ISEOL plan")
+        if planning_handoff is not None:
+            value["planningHandoff"] = planning_handoff.model_dump(mode="json", by_alias=True)
         return value
 
     @staticmethod
