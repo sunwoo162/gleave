@@ -13,6 +13,11 @@ _DESKTOP_TEXT = {
         "ready": "준비됨",
         "start_hint": "무엇을 도와드릴까요?",
         "project_none": "프로젝트: 선택되지 않음",
+        "runtime_none": "실행 프로필: 선택되지 않음",
+        "runtime_prefix": "실행 프로필",
+        "quality_prefix": "품질",
+        "deployment_prefix": "배포 준비",
+        "configuration_prefix": "추가 설정 필요",
         "claim_checking": "ClaimLatch: 확인 중",
         "mobile_available": "모바일 브리지: 데스크톱에서 연결 가능",
         "assistant_placeholder": "EEEE에게 다음 할 일을 물어보세요…",
@@ -49,6 +54,11 @@ _DESKTOP_TEXT = {
         "ready": "Ready",
         "start_hint": "What can I help with?",
         "project_none": "Project: none selected",
+        "runtime_none": "Runtime profile: none selected",
+        "runtime_prefix": "Runtime profile",
+        "quality_prefix": "Quality",
+        "deployment_prefix": "Deployment readiness",
+        "configuration_prefix": "Configuration needed",
         "claim_checking": "ClaimLatch: checking",
         "mobile_available": "Mobile bridge: available from Desktop",
         "assistant_placeholder": "Ask EEEE what to do next…",
@@ -170,6 +180,9 @@ class PetWindow:
                 self.project_status = QLabel()
                 self.project_status.setWordWrap(True)
                 root.addWidget(self.project_status)
+                self.runtime_status = QLabel()
+                self.runtime_status.setWordWrap(True)
+                root.addWidget(self.runtime_status)
                 self.trust_status = QLabel()
                 self.trust_status.setWordWrap(True)
                 root.addWidget(self.trust_status)
@@ -351,6 +364,7 @@ class PetWindow:
                     self.headline.setText(self._text("ready"))
                     self.detail.setText(self._text("start_hint"))
                     self.project_status.setText(self._text("project_none"))
+                    self.runtime_status.setText(self._text("runtime_none"))
                     self.trust_status.setText(self._text("claim_checking"))
                     self.mobile_status.setText(self._text("mobile_available"))
                     self.events_view.setText(self._text("events_none"))
@@ -481,6 +495,33 @@ class PetWindow:
                     if isinstance(project_id, str)
                     else self._text("project_none")
                 )
+                profile = payload.get("projectProfile")
+                if isinstance(profile, dict):
+                    runtime_profile = profile.get("runtimeProfile")
+                    quality_status = payload.get("qualityStatus")
+                    readiness = profile.get("provisioningStatus")
+                    connectors = profile.get("connectors", [])
+                    missing = [
+                        str(connector.get("connectorId"))
+                        for connector in connectors
+                        if isinstance(connector, dict)
+                        and connector.get("state") == "awaiting_configuration"
+                        and isinstance(connector.get("connectorId"), str)
+                    ] if isinstance(connectors, list) else []
+                    status_parts = []
+                    if isinstance(runtime_profile, str):
+                        status_parts.append(f"{self._text('runtime_prefix')}: {runtime_profile}")
+                    if isinstance(quality_status, str):
+                        status_parts.append(f"{self._text('quality_prefix')}: {quality_status}")
+                    if isinstance(readiness, str):
+                        status_parts.append(f"{self._text('deployment_prefix')}: {readiness}")
+                    if missing:
+                        status_parts.append(
+                            f"{self._text('configuration_prefix')}: {', '.join(missing)}"
+                        )
+                    self.runtime_status.setText(" • ".join(status_parts) or self._text("runtime_none"))
+                else:
+                    self.runtime_status.setText(self._text("runtime_none"))
                 claim_latch = payload.get("claimLatch")
                 if isinstance(claim_latch, dict):
                     status = claim_latch.get("status", "unknown")

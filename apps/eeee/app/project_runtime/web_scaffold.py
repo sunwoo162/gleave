@@ -40,6 +40,11 @@ GOOGLE_CLIENT_SECRET=
 SESSION_SECRET=replace-in-production
 PUBLIC_APP_URL=http://127.0.0.1:8787
 """,
+        ".gitignore": """.env
+data/
+__pycache__/
+*.py[cod]
+""",
         "docker-compose.yml": """services:
   app:
     build: .
