@@ -23,7 +23,7 @@ class WorkPlan(BaseModel):
 _TARGET_PATTERNS = (
     ("todo_app", re.compile(r"(?:\btodo\b|할\s*일|체크리스트|to\s*do)", re.I)),
     ("local_ai_app", re.compile(r"\b(?:local\s+ai|offline\s+ai)\b", re.I)),
-    ("web_app", re.compile(r"\b(?:web\s*app|website|web\s+application)\b", re.I)),
+    ("web_app", re.compile(r"(?:\b(?:web\s*app|website|web\s+application)\b|웹\s*(?:앱|서비스|사이트|애플리케이션))", re.I)),
     ("developer_tool", re.compile(r"\b(?:developer\s+(?:cli\s+)?tool|cli|command.line\s+tool)\b", re.I)),
     ("automation", re.compile(r"\b(?:automate|automation|workflow)\b", re.I)),
 )
@@ -40,21 +40,26 @@ def parse_request(text: str) -> RequestBrief:
     parts = [part.strip() for part in _CONSTRAINT_BOUNDARY.split(normalized) if part.strip()]
     goal = parts[0]
     matching_targets = [kind for kind, pattern in _TARGET_PATTERNS if pattern.search(normalized)]
-    target_type = matching_targets[0] if len(matching_targets) == 1 else "unknown"
+    has_web_target = "web_app" in matching_targets
+    conflicting_target = any(kind in matching_targets for kind in ("developer_tool", "automation", "local_ai_app"))
+    if has_web_target and not conflicting_target:
+        target_type = "web_app"
+    else:
+        target_type = matching_targets[0] if len(matching_targets) == 1 else "unknown"
     constraints = parts[1:]
     uncertainties: list[str] = []
     if not matching_targets:
         constraints.insert(0, goal)
         uncertainties.append("Target type needs confirmation")
-    elif len(matching_targets) > 1:
+    elif len(matching_targets) > 1 and target_type == "unknown":
         uncertainties.append("Target type is ambiguous: " + ", ".join(matching_targets))
     if _VAGUE_GOAL.fullmatch(goal):
         uncertainties.append("Goal needs clarification")
     if not _PLATFORMS.search(normalized):
         uncertainties.append("Target platform needs confirmation")
     canonical_intent = (
-        f"project.create.{matching_targets[0]}"
-        if len(matching_targets) == 1
+        f"project.create.{target_type}"
+        if target_type != "unknown"
         else "project.unknown"
     )
     return RequestBrief(
@@ -69,6 +74,7 @@ def parse_request(text: str) -> RequestBrief:
         needs_confirmation=bool(uncertainties),
         uncertainties=uncertainties,
         canonical_intent=canonical_intent,
+        runtime_profile="web_app" if target_type == "web_app" else "static_app",
     )
 
 

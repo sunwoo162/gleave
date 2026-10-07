@@ -36,6 +36,7 @@ class ProjectProfile(BaseModel):
     project_id: str = Field(min_length=1, alias="projectId")
     project_revision: str = Field(min_length=1, alias="projectRevision")
     goal: str = Field(min_length=1)
+    runtime_profile: Literal["static_app", "web_app", "mobile_app"] = "static_app"
     scope: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list, alias="acceptanceCriteria")
