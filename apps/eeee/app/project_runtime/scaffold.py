@@ -15,6 +15,7 @@ def create_todo_scaffold(workspace: str | Path) -> list[Path]:
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Todo</title>
+    <link rel="icon" href="favicon.svg" />
     <link rel="stylesheet" href="src/shared/ui/styles.css" />
   </head>
   <body>
@@ -34,6 +35,7 @@ def create_todo_scaffold(workspace: str | Path) -> list[Path]:
             indent=2,
         )
         + "\n",
+        "favicon.svg": """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"><rect width=\"64\" height=\"64\" rx=\"18\" fill=\"#1a1a1a\"/><path d=\"m17 33 10 10 20-22\" fill=\"none\" stroke=\"#fff\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"7\"/></svg>\n""",
         "README.md": """# Todo 프로젝트
 
 Gleave와 ISEOL이 생성한 로컬 우선 Todo 프로젝트입니다.
@@ -110,6 +112,7 @@ export function toggleTodoAt(todos, id) {
     const item = document.createElement('li');
     item.className = todo.completed ? 'todo todo--done' : 'todo';
     item.innerHTML = `<label><input type="checkbox" data-toggle="${todo.id}" ${todo.completed ? 'checked' : ''}><span>${escapeHtml(todo.title)}</span></label><button type="button" data-delete="${todo.id}">삭제</button>`;
+    list.append(item);
   }
   list.querySelectorAll('[data-toggle]').forEach((node) => node.addEventListener('change', () => handlers.toggle(node.dataset.toggle)));
   list.querySelectorAll('[data-delete]').forEach((node) => node.addEventListener('click', () => handlers.remove(node.dataset.delete)));
