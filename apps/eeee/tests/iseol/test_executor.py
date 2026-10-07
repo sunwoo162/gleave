@@ -3,7 +3,7 @@ from pathlib import Path
 from app.agent.protocol import AgentResult
 from app.contracts import ExecutionEnvelope, ExecutionStatus
 from app.iseol.agents import AgentTeamFactory
-from app.iseol.executor import AgentGraphExecutor
+from app.iseol.executor import AgentGraphExecutor, ReflectionDecision
 from app.trust.pipeline import TrustPipelineDecision
 
 
@@ -15,7 +15,7 @@ class RecordingRuntime:
     def run(self, request):
         agent_id = request.prompt.split("agentId=")[1].split()[0]
         self.calls.append(agent_id)
-        if agent_id == self.fail_agent:
+        if agent_id == self.fail_agent and self.calls.count(agent_id) == 1:
             return AgentResult("failed", f"{agent_id} failed", [], [], [], "failed")
         return AgentResult(
             "completed", f"{agent_id} completed", [{"evidenceId": f"evidence-{agent_id}"}],
@@ -75,3 +75,25 @@ def test_executor_blocks_dependents_after_failed_or_untrusted_handoff(tmp_path):
     assert "integration" not in runtime.calls
     assert report.by_id("frontend").status == "blocked"
     assert report.by_id("test").status == "blocked"
+
+
+def test_reflector_retries_only_the_failed_agent(tmp_path):
+    runtime = RecordingRuntime(fail_agent="frontend")
+    trust = PassingTrust()
+    executor = AgentGraphExecutor(
+        runtime=runtime,
+        trust_pipeline=trust,
+        workspace=Path(tmp_path),
+        reflector=lambda node, record: ReflectionDecision(
+            agent_id=node.id, retry=True, diagnosis=record.reason,
+            instruction="재시도 전에 누락된 증거를 보강하라",
+        ),
+    )
+
+    report = executor.execute(AgentTeamFactory.default_graph("Todo 앱"), _envelope())
+
+    assert report.status == "completed"
+    assert runtime.calls.count("frontend") == 2
+    assert runtime.calls.count("backend") == 1
+    assert report.by_id("frontend").attempt == 2
+    assert report.by_id("frontend").reflection == "재시도 전에 누락된 증거를 보강하라"

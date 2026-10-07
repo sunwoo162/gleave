@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
+from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,6 +34,17 @@ class AgentExecutionRecord(BaseModel):
     reason: str
     started_at: datetime = Field(alias="startedAt")
     completed_at: datetime = Field(alias="completedAt")
+    attempt: int = Field(default=1, ge=1)
+    reflection: str | None = None
+
+
+class ReflectionDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    agent_id: str = Field(alias="agentId")
+    retry: bool
+    diagnosis: str = Field(min_length=1)
+    instruction: str = Field(min_length=1)
 
 
 class AgentExecutionReport(BaseModel):
@@ -59,6 +71,8 @@ class AgentGraphExecutor:
         trust_pipeline: TrustPipeline,
         workspace: Path,
         max_parallelism: int = 3,
+        reflector: Callable[[AgentNode, AgentExecutionRecord], ReflectionDecision] | None = None,
+        max_retries: int = 1,
     ) -> None:
         self.runtime = runtime
         self.trust_pipeline = trust_pipeline
@@ -66,6 +80,10 @@ class AgentGraphExecutor:
         if max_parallelism < 1:
             raise ValueError("max_parallelism must be positive")
         self.max_parallelism = max_parallelism
+        self.reflector = reflector
+        if max_retries < 0:
+            raise ValueError("max_retries must be nonnegative")
+        self.max_retries = max_retries
 
     def execute(self, graph: AgentGraph, envelope: ExecutionEnvelope) -> AgentExecutionReport:
         records: dict[str, AgentExecutionRecord] = {}
@@ -74,6 +92,7 @@ class AgentGraphExecutor:
         failed_ids: set[str] = set()
         remaining = {node.id: node for node in graph.agents}
         handoffs: dict[str, AgentExecutionRecord] = {}
+        attempts: dict[str, int] = {}
 
         while remaining:
             to_block = [
@@ -101,6 +120,20 @@ class AgentGraphExecutor:
                 }
                 for node in batch:
                     record = futures[node.id].result()
+                    while (
+                        record.status != "passed"
+                        and self.reflector is not None
+                        and attempts.get(node.id, 0) < self.max_retries
+                    ):
+                        attempts[node.id] = attempts.get(node.id, 0) + 1
+                        reflection = self.reflector(node, record)
+                        if reflection.agent_id != node.id or not reflection.retry:
+                            break
+                        record = self._run_node(
+                            node, envelope, handoffs,
+                            reflection=reflection.instruction,
+                            attempt=attempts[node.id] + 1,
+                        ).model_copy(update={"reflection": reflection.instruction})
                     records[node.id] = record
                     if record.status == "passed":
                         completed_ids.add(node.id)
@@ -120,7 +153,8 @@ class AgentGraphExecutor:
         )
 
     def _run_node(self, node: AgentNode, envelope: ExecutionEnvelope,
-                  handoffs: dict[str, AgentExecutionRecord]) -> AgentExecutionRecord:
+                  handoffs: dict[str, AgentExecutionRecord], *,
+                  reflection: str | None = None, attempt: int = 1) -> AgentExecutionRecord:
         started = datetime.now(timezone.utc)
         dependency_context = "\n".join(
             f"{dependency}: {handoffs[dependency].summary}; evidence={handoffs[dependency].evidence_ids}"
@@ -132,6 +166,7 @@ class AgentGraphExecutor:
             f"Goal: {node.goal}\n"
             f"Acceptance criteria: {node.acceptance_criteria}\n"
             f"Verified dependency handoffs:\n{dependency_context}\n"
+            f"Reflector instruction: {reflection or 'none'}\n"
             "Return only work backed by files, commands, tests, and evidence."
         )
         result = self.runtime.run(AgentRequest(
@@ -149,7 +184,7 @@ class AgentGraphExecutor:
                 summary=result.summary, changedFiles=list(result.changed_files),
                 evidenceIds=evidence_ids, claimLatchDecision="NOT_RUN",
                 reason=result.error or "Agent runtime did not complete",
-                startedAt=started, completedAt=datetime.now(timezone.utc),
+                startedAt=started, completedAt=datetime.now(timezone.utc), attempt=attempt,
             )
         child = envelope.model_copy(update={
             "execution_id": f"{envelope.execution_id}:{node.id}",
@@ -166,6 +201,7 @@ class AgentGraphExecutor:
             summary=result.summary, changedFiles=list(result.changed_files),
             evidenceIds=evidence_ids, claimLatchDecision=trust.decision,
             reason=trust.reason, startedAt=started, completedAt=datetime.now(timezone.utc),
+            attempt=attempt,
         )
 
     @staticmethod
