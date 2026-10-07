@@ -97,3 +97,23 @@ def test_reflector_retries_only_the_failed_agent(tmp_path):
     assert runtime.calls.count("backend") == 1
     assert report.by_id("frontend").attempt == 2
     assert report.by_id("frontend").reflection == "재시도 전에 누락된 증거를 보강하라"
+
+
+def test_executor_blocks_before_claimlatch_when_quality_gate_finds_secret(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "frontend.py").write_text(
+        'API_KEY = "not-a-real-but-secret-looking-value"\n', encoding="utf-8"
+    )
+    runtime = RecordingRuntime()
+    trust = PassingTrust()
+    executor = AgentGraphExecutor(runtime=runtime, trust_pipeline=trust, workspace=Path(tmp_path))
+
+    report = executor.execute(AgentTeamFactory.default_graph("Todo 앱"), _envelope())
+
+    frontend = report.by_id("frontend")
+    assert frontend.status == "blocked"
+    assert frontend.quality_decision == "BLOCK"
+    assert frontend.claim_latch_decision == "NOT_RUN"
+    assert "secret" in frontend.reason.lower()
+    assert "frontend" not in trust.calls
+    assert report.by_id("test").status == "blocked"

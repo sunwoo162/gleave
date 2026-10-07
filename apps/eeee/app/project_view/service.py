@@ -124,6 +124,12 @@ class ProjectViewService:
                     agent_id = agent["id"]
                     record = report_by_id.get(agent_id, {})
                     claim = str(record.get("claimLatchDecision", "unavailable"))
+                    quality = str(record.get("qualityDecision", "unavailable"))
+                    quality_checks = [
+                        str(check.get("message"))
+                        for check in record.get("qualityChecks", [])
+                        if isinstance(check, Mapping) and isinstance(check.get("message"), str)
+                    ]
                     nodes.append(ProjectMapNode(
                         id=f"agent:{agent_id}", role=str(agent.get("role", agent_id)), group="implementation",
                         title=str(agent.get("title", agent_id)), status=_agent_status(record.get("status")),
@@ -132,10 +138,11 @@ class ProjectViewService:
                         execution_id=_string(record.get("executionId")),
                         changed_files=_strings(record.get("changedFiles")),
                         claim_latch_status={"BLOCKED": "BLOCK", "PASS": "PASS", "WARN": "WARN"}.get(claim, "unavailable"),
+                        qa_status=quality if quality in {"PASS", "WARN", "BLOCK"} else "unavailable",
                         evidence_ids=_strings(record.get("evidenceIds")),
                         reason=_string(record.get("reason")) or str(agent.get("goal", "")),
                         selected_because="Dependencies and handoff gates determine when this specialist may run",
-                        trust_blockers=_strings(record.get("acceptanceGaps")),
+                        trust_blockers=[*_strings(record.get("acceptanceGaps")), *quality_checks],
                         started_at=record.get("startedAt"), completed_at=record.get("completedAt"),
                     ))
             linked = set()
