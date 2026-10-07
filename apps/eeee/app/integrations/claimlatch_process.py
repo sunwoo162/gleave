@@ -48,7 +48,7 @@ class ClaimLatchProcessManager:
             pass
 
         adapter_root = self.repo_root / "integrations" / "claimlatch-adapter"
-        npm = "npm.cmd" if os.name == "nt" else "npm"
+        node = "node.exe" if os.name == "nt" else "node"
         environment = os.environ.copy()
         environment.update(
             # The adapter has a deterministic local verifier fallback. External
@@ -65,7 +65,7 @@ class ClaimLatchProcessManager:
         if self.llm_base_url:
             environment["CLAIMLATCH_LLM_BASE_URL"] = self.llm_base_url
         self._process = subprocess.Popen(
-            [npm, "run", "start", "--", "--port", str(self.port)],
+            [node, "--import", "tsx", "src/standalone.ts", "--port", str(self.port)],
             cwd=adapter_root,
             env=environment,
             stdout=subprocess.DEVNULL,

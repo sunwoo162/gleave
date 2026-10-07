@@ -55,7 +55,8 @@ def test_manager_starts_bundled_claimlatch_plugin_with_inherited_credentials(mon
 
     assert result.url == "http://127.0.0.1:4318"
     assert result.started is True
-    assert spawned["command"][-3:] == ["--", "--port", "4318"]
+    assert spawned["command"][-2:] == ["--port", "4318"]
+    assert spawned["command"][1:3] == ["--import", "tsx"]
     assert spawned["kwargs"]["env"]["CLAIMLATCH_LLM_MODEL"] == "test-model"
     assert spawned["kwargs"]["env"]["TAVILY_API_KEY"] == "tavily-key"
     manager.stop()
