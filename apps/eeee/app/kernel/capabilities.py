@@ -209,7 +209,11 @@ class ProjectExecutionCapability:
                     )
             todo_run = None
             memory_records = []
-            if is_todo_request(brief.goal, [brief.target_type, *brief.acceptance_criteria]):
+            # Keep the original user utterance in the product-type decision.
+            # The parsed goal is intentionally normalized and can vary by
+            # locale/parser implementation; a direct request such as
+            # "Todo 앱 만들어줘" must never skip the verified Todo runner.
+            if is_todo_request(text, [brief.goal, brief.target_type, *brief.acceptance_criteria]):
                 prepared = self.provisioner.todo_runner.prepare(
                     project_id=project.id,
                     project_revision=project.revision,
