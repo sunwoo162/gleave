@@ -29,6 +29,7 @@ try {
             tests/trust `
             tests/assistant `
             tests/project_runtime `
+            tests/release `
             tests/mobile `
             tests/e2e `
             tests/coordinator/test_memory_project_flow.py `
@@ -48,6 +49,8 @@ try {
         tests/qa/qa-orchestrator.test.ts `
         tests/qa/release-gate.test.ts `
         tests/agent-organization/team-composer.test.ts `
+        tests/agent-organization/contracts.test.ts `
+        tests/agent-organization/service.test.ts `
         tests/agent-organization/qa-baseline.test.ts
     if ($LASTEXITCODE -ne 0) { throw "ISEOL verification failed." }
 } finally {
