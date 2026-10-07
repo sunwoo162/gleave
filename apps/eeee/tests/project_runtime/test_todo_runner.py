@@ -28,6 +28,9 @@ def test_todo_runner_writes_independent_qa_and_release_manifest(tmp_path) -> Non
     assert result.status == "PASS"
     assert result.qa_report_path == str(workspace / "QA_REPORT.json")
     assert result.release_manifest_path == str(workspace / "RELEASE_MANIFEST.json")
+    assert result.git_branch == "project/project-todo"
+    assert result.git_commit and len(result.git_commit) == 40
+    assert (workspace / ".git").is_dir()
     qa = json.loads((workspace / "QA_REPORT.json").read_text(encoding="utf-8"))
     assert qa["independent"] is True
     assert qa["status"] == "PASS"

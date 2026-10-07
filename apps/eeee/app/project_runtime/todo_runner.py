@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from app.release.manifest import build_release_manifest
+from app.project_runtime.git_workspace import GitWorkspaceError, record_workspace
 
 
 class TodoRunResult:
@@ -18,11 +19,15 @@ class TodoRunResult:
         reason: str,
         qa_report_path: str,
         release_manifest_path: str | None,
+        git_branch: str | None = None,
+        git_commit: str | None = None,
     ) -> None:
         self.status = status
         self.reason = reason
         self.qa_report_path = qa_report_path
         self.release_manifest_path = release_manifest_path
+        self.git_branch = git_branch
+        self.git_commit = git_commit
 
 
 class PreparedTodoRun:
@@ -132,11 +137,24 @@ class TodoProjectRunner:
             json.dumps(manifest.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        try:
+            git = record_workspace(
+                workspace, project_id=project_id,
+                message="feat(todo): generate verified todo project",
+            )
+        except GitWorkspaceError as exc:
+            return TodoRunResult(
+                status="BLOCKED", reason=f"Git workspace recording failed: {exc}",
+                qa_report_path=prepared.qa_report_path,
+                release_manifest_path=str(manifest_path),
+            )
         return TodoRunResult(
             status="PASS",
             reason="Todo project passed independent QA and ClaimLatch release verification",
             qa_report_path=prepared.qa_report_path,
             release_manifest_path=str(manifest_path),
+            git_branch=git.branch,
+            git_commit=git.commit,
         )
 
     def _checks(self, root: Path) -> list[dict[str, Any]]:

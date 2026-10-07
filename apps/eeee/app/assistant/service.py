@@ -19,7 +19,10 @@ from app.kernel.service import KernelService
 class AssistantRouteResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    status: Literal["selected", "needs_clarification", "ready", "awaiting_configuration", "blocked"]
+    status: Literal[
+        "selected", "needs_clarification", "ready", "awaiting_configuration",
+        "completed", "blocked",
+    ]
     selection: CapabilitySelection
     message: str = Field(min_length=1)
     project_id: str | None = None
@@ -28,6 +31,12 @@ class AssistantRouteResult(BaseModel):
     execution_plan_path: str | None = Field(default=None, alias="executionPlanPath")
     planning_session_id: str | None = Field(default=None, alias="planningSessionId")
     planning_handoff_id: str | None = Field(default=None, alias="planningHandoffId")
+    quality_status: str | None = Field(default=None, alias="qualityStatus")
+    quality_reason: str | None = Field(default=None, alias="qualityReason")
+    qa_report_path: str | None = Field(default=None, alias="qaReportPath")
+    release_manifest_path: str | None = Field(default=None, alias="releaseManifestPath")
+    git_branch: str | None = Field(default=None, alias="gitBranch")
+    git_commit: str | None = Field(default=None, alias="gitCommit")
     response_verification: ResponseVerification
 
 
@@ -70,16 +79,28 @@ class AssistantService:
         if envelope.error is not None and envelope.error.code == "invalid_request":
             raise ValueError(envelope.error.message)
         output = envelope.model_dump(mode="json")["output"] or {}
+        quality_status = output.get("qualityStatus")
+        completed_locally = quality_status == "PASS"
+        status = "completed" if completed_locally else output.get("status", "blocked")
+        message = output.get("message", "요청을 완료하지 못했어.")
+        if completed_locally:
+            message = "로컬 프로젝트가 생성되고 QA/ClaimLatch 검증을 통과했어. 외부 플러그인은 선택적으로 연결할 수 있어."
         return AssistantRouteResult(
-            status=output.get("status", "blocked"),
+            status=status,
             selection=CapabilitySelection.model_validate(output["selection"]),
-            message=output.get("message", "요청을 완료하지 못했어."),
+            message=message,
             project_id=output.get("projectId"),
             project_profile=output.get("projectProfile"),
             missing_connectors=output.get("missingConnectors", []),
             execution_plan_path=output.get("executionPlanPath"),
             planning_session_id=output.get("planningSessionId"),
             planning_handoff_id=output.get("planningHandoffId"),
+            quality_status=quality_status,
+            quality_reason=output.get("qualityReason"),
+            qa_report_path=output.get("qaReportPath"),
+            release_manifest_path=output.get("releaseManifestPath"),
+            git_branch=output.get("gitBranch"),
+            git_commit=output.get("gitCommit"),
             response_verification=ResponseVerification.model_validate(
                 output.get("responseVerification", {
                     "decision": "WARN",

@@ -22,7 +22,7 @@ def test_desktop_state_exposes_redacted_local_health_and_claim_latch(tmp_path):
     assert payload["status"] == "ok"
     assert payload["transport"] == "desktop-local"
     assert payload["claimLatch"] == {
-        "status": "required",
+        "status": "configured",
         "mode": "required",
         "profileVersion": "claimlatch-v0.2.0",
         "engineVersion": "0.3.86",

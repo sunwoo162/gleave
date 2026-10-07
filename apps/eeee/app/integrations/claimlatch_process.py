@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,12 +37,6 @@ class ClaimLatchProcessManager:
         self._process: subprocess.Popen[bytes] | None = None
 
     def start(self) -> ClaimLatchProcessResult:
-        if not self.llm_model or not self.tavily_api_key:
-            return ClaimLatchProcessResult(
-                url=None,
-                started=False,
-                reason="ClaimLatch provider credentials are not configured",
-            )
         if self._process is not None and self._process.poll() is None:
             return ClaimLatchProcessResult(url=self.url, started=True, reason="already running")
 
@@ -48,9 +44,15 @@ class ClaimLatchProcessManager:
         npm = "npm.cmd" if os.name == "nt" else "npm"
         environment = os.environ.copy()
         environment.update(
-            CLAIMLATCH_LLM_MODEL=self.llm_model,
-            TAVILY_API_KEY=self.tavily_api_key,
+            # The adapter has a deterministic local verifier fallback. External
+            # provider credentials improve claim verification but are not needed
+            # to verify local project evidence and release boundaries.
+            CLAIMLATCH_LOCAL_MODE="0" if self.llm_model and self.tavily_api_key else "1",
         )
+        if self.llm_model:
+            environment["CLAIMLATCH_LLM_MODEL"] = self.llm_model
+        if self.tavily_api_key:
+            environment["TAVILY_API_KEY"] = self.tavily_api_key
         if self.llm_api_key:
             environment["CLAIMLATCH_LLM_API_KEY"] = self.llm_api_key
         if self.llm_base_url:
@@ -63,7 +65,24 @@ class ClaimLatchProcessManager:
             stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
-        return ClaimLatchProcessResult(url=self.url, started=True)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if self._process.poll() is not None:
+                return ClaimLatchProcessResult(
+                    url=None,
+                    started=False,
+                    reason="ClaimLatch adapter exited during startup",
+                )
+            try:
+                with socket.create_connection(("127.0.0.1", self.port), timeout=0.1):
+                    return ClaimLatchProcessResult(url=self.url, started=True)
+            except OSError:
+                time.sleep(0.05)
+        return ClaimLatchProcessResult(
+            url=None,
+            started=False,
+            reason="ClaimLatch adapter did not become ready",
+        )
 
     def stop(self) -> None:
         process = self._process

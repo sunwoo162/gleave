@@ -11,6 +11,7 @@ from app.project_runtime.iseol_bridge import IseolPlanBridge
 from app.planning.models import PlanningHandoff
 from app.project_runtime.todo_runner import TodoProjectRunner
 import json
+from datetime import datetime, timezone
 from app.storage.sqlite import SQLiteStore
 
 
@@ -75,11 +76,42 @@ class ProjectProvisioner:
         bindings = [connector.plan(profile) for connector in self.connectors.values()]
         profile = profile.model_copy(update={"connectors": bindings})
         self.store.save_project_profile(profile)
+        self._write_local_project_documents(profile, request, planning_handoff)
         execution_plan_path = None
         execution_plan_path = self._write_execution_plan(
             project, request, memory_ids, qa_baseline_ids, memory_context, request_id, planning_handoff,
         )
         return _result(profile, execution_plan_path=execution_plan_path)
+
+    @staticmethod
+    def _write_local_project_documents(
+        profile: ProjectProfile,
+        request: RequestBrief,
+        planning_handoff: PlanningHandoff | None,
+    ) -> None:
+        root = Path(profile.workspace)
+        (root / "PROJECT_PROFILE.json").write_text(
+            json.dumps(profile.model_dump(mode="json", by_alias=True), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        handoff = planning_handoff.handoff_id if planning_handoff is not None else "not-created"
+        lines = [
+            "# Project Log",
+            "",
+            f"- Project: `{profile.project_id}`",
+            f"- Revision: `{profile.project_revision}`",
+            f"- Created: `{datetime.now(timezone.utc).isoformat()}`",
+            f"- Request: {request.goal}",
+            f"- Planning handoff: `{handoff}`",
+            "",
+            "## Acceptance criteria",
+            *[f"- {item}" for item in profile.acceptance_criteria],
+            "",
+            "## Record policy",
+            "This local record is the source of truth until an optional document connector is configured.",
+            "QA_REPORT.json, RELEASE_MANIFEST.json, execution-plan.json, and Git history are linked evidence.",
+        ]
+        (root / "PROJECT_LOG.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _write_execution_plan(
         self,

@@ -62,7 +62,7 @@ def test_stale_iseol_review_result_is_rejected_before_persistence(tmp_path) -> N
     assert "stale" in response.json()["detail"].lower()
 
 
-def test_required_claimlatch_blocks_evidence_without_persisting_it(tmp_path) -> None:
+def test_required_claimlatch_accepts_locally_verified_evidence(tmp_path) -> None:
     application = create_app(
         Settings(
             data_dir=tmp_path / "data",
@@ -81,12 +81,9 @@ def test_required_claimlatch_blocks_evidence_without_persisting_it(tmp_path) -> 
     )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "blocked"
-    try:
-        application.state.api_flow.store.get_project_evidence(
-            "project-1", "github-review", "a" * 40
-        )
-    except KeyError:
-        pass
-    else:  # pragma: no cover - protects the fail-closed boundary
-        raise AssertionError("blocked evidence must not be persisted")
+    assert response.json()["status"] == "accepted"
+    stored = application.state.api_flow.store.get_project_evidence(
+        "project-1", "github-review", "a" * 40
+    )
+    assert stored.project_id == "project-1"
+    assert response.json()["trust"]["decision"] == "PASS"

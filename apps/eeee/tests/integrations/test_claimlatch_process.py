@@ -28,6 +28,7 @@ def test_manager_starts_bundled_claimlatch_plugin_with_inherited_credentials(mon
         return process
 
     monkeypatch.setattr("app.integrations.claimlatch_process.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("app.integrations.claimlatch_process.socket.create_connection", lambda *args, **kwargs: FakeSocket())
     manager = ClaimLatchProcessManager(
         repo_root=tmp_path,
         port=4318,
@@ -48,10 +49,21 @@ def test_manager_starts_bundled_claimlatch_plugin_with_inherited_credentials(mon
     assert process.terminated is True
 
 
-def test_manager_does_not_spawn_without_required_provider_configuration(tmp_path) -> None:
+def test_manager_starts_local_claimlatch_without_provider_configuration(monkeypatch, tmp_path) -> None:
+    process = FakeProcess()
+    monkeypatch.setattr("app.integrations.claimlatch_process.subprocess.Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr("app.integrations.claimlatch_process.socket.create_connection", lambda *args, **kwargs: FakeSocket())
     manager = ClaimLatchProcessManager(repo_root=Path(tmp_path))
 
     result = manager.start()
 
-    assert result.started is False
-    assert result.reason == "ClaimLatch provider credentials are not configured"
+    assert result.started is True
+    assert result.url == "http://127.0.0.1:4318"
+
+
+class FakeSocket:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False

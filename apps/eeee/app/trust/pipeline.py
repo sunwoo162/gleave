@@ -139,14 +139,24 @@ class TrustPipeline:
         elif qa_failure:
             result = decision.model_copy(update={"decision": "BLOCKED", "reason": qa_failure,
                                                  "qa_report_id": _string(qa_report, "id")})
-        elif not decision.evidence_ids:
-            result = decision.model_copy(update={"decision": "BLOCKED",
-                                                 "reason": "Release requires verified evidence IDs",
-                                                 "qa_report_id": _string(qa_report, "id")})
         else:
-            result = decision.model_copy(update={"qa_report_id": _string(qa_report, "id"),
-                                                 "evidence_ids": _unique([*decision.evidence_ids,
-                                                                           *_strings(qa_report, "evidenceIds")])})
+            combined_evidence = _unique([
+                *decision.evidence_ids,
+                *_strings(qa_report, "evidenceIds"),
+            ])
+            if not combined_evidence:
+                result = decision.model_copy(update={
+                    "decision": "BLOCKED",
+                    "reason": "Release requires verified evidence IDs",
+                    "qa_report_id": _string(qa_report, "id"),
+                })
+            else:
+                result = decision.model_copy(update={
+                    "qa_report_id": _string(qa_report, "id"),
+                    "evidence_ids": combined_evidence,
+                })
+        if result is None:
+            raise AssertionError("release gate did not produce a decision")
         self._record_release_activity(envelope, result, qa_report)
         return result
 

@@ -307,6 +307,8 @@ class ProjectExecutionCapability:
                 "planningHandoffId": planning_handoff.handoff_id,
                 "qaReportPath": todo_run.qa_report_path if todo_run is not None else None,
                 "releaseManifestPath": todo_run.release_manifest_path if todo_run is not None else None,
+                "gitBranch": todo_run.git_branch if todo_run is not None else None,
+                "gitCommit": todo_run.git_commit if todo_run is not None else None,
                 "qualityStatus": todo_run.status if todo_run is not None else None,
                 "qualityReason": todo_run.reason if todo_run is not None else None,
                 "memoryCandidateIds": [record.id for record in memory_records],

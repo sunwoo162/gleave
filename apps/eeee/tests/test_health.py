@@ -15,7 +15,7 @@ def test_health_returns_ok():
     assert response.json() == {
         "status": "ok",
         "claimLatch": {
-            "status": "advisory",
+            "status": "configured",
             "mode": "advisory",
             "profileVersion": "claimlatch-v0.2.0",
             "engineVersion": "0.3.86",
