@@ -87,7 +87,17 @@ class ClaimLatchProcessManager:
     def stop(self) -> None:
         process = self._process
         self._process = None
-        if process is None or process.poll() is not None:
+        if process is None:
+            return
+        if os.name == "nt" and process.poll() is None:
+            # npm.cmd is only a wrapper; terminating it alone leaves the Node
+            # adapter child listening on the fixed port between app restarts.
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True,
+                check=False,
+            )
+        if process.poll() is not None:
             return
         process.terminate()
         try:
