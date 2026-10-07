@@ -158,6 +158,101 @@ ISEOL은 이 계약을 받아 작업을 쪼갠다. ISEOL이 자체적으로 작�
 
 UI는 깊은 기획과 빠른 기획을 모두 지원한다. 단순 프로젝트 생성 화면은 기존 사용자 경험을 유지하되, 내부 이벤트와 진행 상태에는 Planning session이 표시되어야 한다.
 
+### 8.1 사용자에게 보이는 실행 조직도
+
+프로젝트 카드를 열면 단순한 상태 목록이 아니라, 기획부터 릴리스까지의 실제 실행 구조를 입체적인 조직도 형태로 표시한다. 이 조직도는 장식용 이미지가 아니라 현재 프로젝트의 실행 데이터에서 생성되는 뷰다.
+
+```text
+프로젝트 요청
+  │
+  ▼
+👑 EEEE / Planning Room
+  ├─ 요구사항 해석
+  ├─ 질문·답변·결정 기록
+  ├─ UX·데이터·기술·완료 기준 설계
+  ├─ 규칙·기본값·사용자 선택 기록
+  └─ Planning Handoff 승인
+       │
+       ▼
+🟢 ISEOL Coordinator
+  ├─ Task Decomposer
+  │    ├─ 작업 분해
+  │    ├─ 선행·후행 관계
+  │    ├─ 위험도·우선순위
+  │    └─ 담당 Agent 선정 이유
+  ├─ Agent Team Factory
+  │    ├─ UI / Design Agent
+  │    ├─ Frontend / Feature Agent
+  │    ├─ Backend / Data Agent
+  │    ├─ Architecture Agent
+  │    ├─ Test / E2E Agent
+  │    ├─ Security / Encoding Agent
+  │    └─ Documentation Agent
+  ├─ Review Coordinator
+  │    ├─ 코드 리뷰
+  │    ├─ 요구사항 대조
+  │    ├─ 회귀 검증
+  │    └─ 문제 원인 Agent 재배정
+  └─ Integration & Release
+       │
+       ▼
+🔴 Quality & Trust Layer
+  ├─ ISEOL QA
+  │    ├─ 단위·통합·E2E
+  │    ├─ 반응형·접근성
+  │    ├─ 인코딩·빌드
+  │    └─ 실제 사용자 흐름
+  ├─ ClaimLatch
+  │    ├─ 주장·근거 연결
+  │    ├─ 파일 존재·SHA256
+  │    ├─ 테스트 로그 대조
+  │    ├─ 프로젝트·revision 일치
+  │    └─ PASS / WARN / BLOCK
+  └─ Memory Promotion Gate
+       ├─ 검증된 결과
+       ├─ 트러블슈팅
+       ├─ 선택 이유·실패 시도
+       └─ 다음 프로젝트 재사용 규칙
+```
+
+조직도 노드는 `대기·진행·성공·실패·차단·재시도` 상태를 표시한다. 노드를 클릭하면 담당 Agent, 입력, 출력 artifact, 의존 작업, branch/commit, 테스트 결과, 현재 결정 이유까지 펼쳐진다. 실패 노드는 원인 Agent와 재계획 경로까지 연결해 보여준다.
+
+### 8.2 전체 개발 과정 기록
+
+모든 중요한 작업은 append-only `Project Activity Ledger`에 남긴다. 자연어 보고만 저장하지 않고 실제 파일, 커밋, 테스트, QA, ClaimLatch 근거와 연결한다.
+
+```json
+{
+  "eventType": "task.assigned|task.started|decision.made|agent.output|commit.created|review.completed|qa.completed|claimlatch.checked|memory.promoted",
+  "projectId": "...",
+  "projectRevision": 3,
+  "runId": "...",
+  "nodeId": "frontend.todo.list",
+  "parentNodeId": "iseol.feature.todo",
+  "actor": { "type": "agent|coordinator|user|system", "id": "..." },
+  "summary": "Todo 목록 렌더링을 분리함",
+  "reason": "요구사항 R-004와 FSD 경계를 유지하기 위해",
+  "alternatives": ["페이지 컴포넌트에 직접 작성"],
+  "selectedBecause": "재사용성과 테스트 격리를 확보할 수 있음",
+  "inputs": ["artifact://planning/requirements.json"],
+  "outputs": ["file://src/features/todo-list/..."],
+  "evidenceRefs": ["test://todo-list.e2e", "commit://abc123"],
+  "status": "completed",
+  "occurredAt": "..."
+}
+```
+
+개발 작업과 중요한 결정 이벤트에는 `reason`, `selectedBecause`, `inputs`, `outputs`, `evidenceRefs`를 필수로 둔다. 진행률 heartbeat처럼 의미가 없는 이벤트만 요약형을 허용한다.
+
+사용자는 프로젝트 상세 화면에서 다음을 볼 수 있다.
+
+1. **조직도**: EEEE → Planning Room → ISEOL → 세부 Agent → QA → ClaimLatch → 릴리스
+2. **실행 타임라인**: 작업, 커밋, 리뷰, 재시도, 실패, 재계획
+3. **결정 기록**: 무엇을 왜 선택했는지, 검토한 대안, 영향받는 요구사항과 파일
+4. **검증 패널**: 테스트 명령, 결과, 로그, 해시, ClaimLatch 판정, 릴리스 가능 여부
+
+원장 이벤트는 project revision과 run ID에 묶고 기존 이벤트를 수정하지 않는다. 정정이 필요하면 정정 이벤트를 추가한다. artifact에는 SHA256을 기록하고, ClaimLatch가 누락이나 불일치를 발견하면 조직도에 `BLOCK`을 표시한다. Memory Promotion Gate는 `PASS`된 실행 기록에서만 회고와 재사용 규칙을 승격한다.
+
 ## 9. 테스트 전략
 
 테스트 우선으로 다음을 추가한다.
@@ -167,6 +262,10 @@ UI는 깊은 기획과 빠른 기획을 모두 지원한다. 단순 프로젝트
 - 사용자 승인 전 ISEOL handoff 차단 테스트
 - 직접 요청의 quick planning 자동 실행 테스트
 - planning handoff와 ISEOL plan 계약 변환 테스트
+- 조직도 노드와 원장 이벤트의 parent/child 연결 테스트
+- 개발 결정 이벤트의 reason/alternative/evidence 필수 필드 테스트
+- commit·테스트·QA·ClaimLatch 결과가 동일 run ID로 연결되는지 검증
+- 실패 Agent와 재계획 경로가 조직도에 표시되는지 검증
 - stale revision 및 재계획 충돌 테스트
 - ClaimLatch evidence ref 전달 테스트
 - API route 테스트
