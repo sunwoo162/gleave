@@ -72,8 +72,11 @@ class ProjectProfile(BaseModel):
 
 
 class ProjectProvisioningResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
     profile: ProjectProfile
     missing_connectors: list[str] = Field(default_factory=list)
+    execution_plan_path: str | None = Field(default=None, alias="executionPlanPath")
 
     @property
     def status(self) -> ProvisioningStatus:

@@ -22,7 +22,7 @@ function brief(overrides: Partial<ProjectBriefV1> = {}): ProjectBriefV1 {
 
 test("decomposes a todo request into an ordered, evidence-gated execution plan", () => {
   const service = createIseolExecutionService();
-  const plan = service.createPlan({ brief: brief(), qualityMemory: [] });
+  const plan = service.createPlan({ brief: brief(), qualityMemory: [], projectRevision: "rev-1" });
 
   assert.deepEqual(
     plan.tasks.map((task) => task.id),
@@ -41,7 +41,7 @@ test("decomposes a todo request into an ordered, evidence-gated execution plan",
 
 test("routes a failed task back to its owning workstream without publishing completion", () => {
   const service = createIseolExecutionService();
-  const plan = service.createPlan({ brief: brief(), qualityMemory: [] });
+  const plan = service.createPlan({ brief: brief(), qualityMemory: [], projectRevision: "rev-1" });
   const running = service.transition(plan, "project-todo:design-baseline", "running");
   const failed = service.transition(running, "project-todo:design-baseline", "failed");
   const retrying = service.routeFailure(failed, "project-todo:design-baseline", "design token mismatch");
@@ -53,10 +53,10 @@ test("routes a failed task back to its owning workstream without publishing comp
 
 test("rejects an update from an older project revision", () => {
   const service = createIseolExecutionService();
-  const plan = service.createPlan({ brief: brief(), qualityMemory: [] });
+  const plan = service.createPlan({ brief: brief(), qualityMemory: [], projectRevision: "rev-1" });
 
   assert.throws(
-    () => service.transition({ ...plan, projectRevision: plan.projectRevision + 1 }, "project-todo:design-baseline", "running", plan.projectRevision),
+    () => service.transition({ ...plan, projectRevision: "rev-2" }, "project-todo:design-baseline", "running", "rev-1"),
     /stale project revision/,
   );
 });

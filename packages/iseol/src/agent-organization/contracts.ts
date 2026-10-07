@@ -47,7 +47,7 @@ export type WorkTask = {
   schemaVersion: 1;
   id: string;
   projectId: string;
-  projectRevision: number;
+  projectRevision: string;
   objective: string;
   dependencies: string[];
   assignedAgentId: string;
@@ -64,7 +64,7 @@ export type VerificationEnvelopeV1 = {
   schemaVersion: 1;
   requestId: string;
   projectId: string;
-  projectRevision: number;
+  projectRevision: string;
   artifactId: string;
   claim: string;
   evidenceIds: string[];
@@ -121,7 +121,7 @@ export function validateWorkTask(input: WorkTask): WorkTask {
   if (input.schemaVersion !== 1) throw new Error("unsupported task schemaVersion");
   requireString(input.id, "task id");
   requireString(input.projectId, "projectId");
-  if (!Number.isInteger(input.projectRevision) || input.projectRevision < 0) throw new Error("projectRevision is invalid");
+  requireString(input.projectRevision, "projectRevision");
   requireString(input.objective, "objective");
   requireArray(input.dependencies, "dependencies");
   requireString(input.assignedAgentId, "assignedAgentId");
@@ -139,7 +139,7 @@ export function validateVerificationEnvelope(input: VerificationEnvelopeV1): Ver
   if (input.schemaVersion !== 1) throw new Error("unsupported verification schemaVersion");
   requireString(input.requestId, "requestId");
   requireString(input.projectId, "projectId");
-  if (!Number.isInteger(input.projectRevision) || input.projectRevision < 0) throw new Error("projectRevision is invalid");
+  requireString(input.projectRevision, "projectRevision");
   requireString(input.artifactId, "artifactId");
   requireString(input.claim, "claim");
   requireArray(input.evidenceIds, "evidenceIds");

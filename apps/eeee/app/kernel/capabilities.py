@@ -124,6 +124,7 @@ class ProjectExecutionCapability:
                 qa_baseline_ids=list(dict.fromkeys([
                     *project_brief.qa_baseline_ids, *envelope_context.assistant_context.qa_baseline_ids,
                 ])),
+                request_id=state.request_id,
             )
             document_execution_id = None
             if self.document_service is not None:
@@ -154,6 +155,7 @@ class ProjectExecutionCapability:
                 "message": "Project Runtime이 생성되었고 외부 연결 상태를 확인해야 해.",
                 "projectId": project.id, "projectProfile": profile.model_dump(mode="json", by_alias=True),
                 "missingConnectors": missing, "documentExecutionId": document_execution_id,
+                "executionPlanPath": provisioned.execution_plan_path,
             })
 
         try:

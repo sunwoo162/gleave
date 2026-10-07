@@ -35,6 +35,7 @@ from app.mobile.bridge import MobileBridge
 from app.oss.github_client import GitHubClient
 from app.oss.researcher import GitHubResearcher
 from app.project_runtime.provisioner import ProjectProvisioner
+from app.project_runtime.iseol_bridge import IseolPlanBridge
 from app.project_runtime.connectors import build_default_connectors
 from app.project_runtime.documents import ProjectDocumentService
 from app.project_runtime.evidence import ProjectEvidenceService
@@ -89,6 +90,7 @@ def create_app(
     project_provisioner = ProjectProvisioner(
         store,
         connectors=build_default_connectors(configured=configured_connectors),
+        iseol_bridge=IseolPlanBridge(timeout=app_settings.command_timeout_seconds),
     )
     app_settings.workspace_root.mkdir(parents=True, exist_ok=True)
     default_workspace = app_settings.workspace_root / "default"

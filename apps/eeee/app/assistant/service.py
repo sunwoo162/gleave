@@ -3,9 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.assistant.models import AssistantContext, AssistantRequest, CapabilitySelection
+from app.assistant.models import AssistantContext, AssistantRequest, CapabilitySelection, ResponseVerification
 from app.assistant.router import CapabilityRouter
 from app.config import Settings
 from app.coordinator.service import Coordinator
@@ -17,12 +17,16 @@ from app.kernel.service import KernelService
 
 
 class AssistantRouteResult(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     status: Literal["selected", "needs_clarification", "ready", "awaiting_configuration", "blocked"]
     selection: CapabilitySelection
     message: str = Field(min_length=1)
     project_id: str | None = None
     project_profile: ProjectProfile | None = None
     missing_connectors: list[str] = Field(default_factory=list)
+    execution_plan_path: str | None = Field(default=None, alias="executionPlanPath")
+    response_verification: ResponseVerification
 
 
 class AssistantService:
@@ -71,6 +75,15 @@ class AssistantService:
             project_id=output.get("projectId"),
             project_profile=output.get("projectProfile"),
             missing_connectors=output.get("missingConnectors", []),
+            execution_plan_path=output.get("executionPlanPath"),
+            response_verification=ResponseVerification.model_validate(
+                output.get("responseVerification", {
+                    "decision": "WARN",
+                    "reason": "Response verification metadata is missing",
+                    "profile_version": "claimlatch-v0.2.0",
+                    "subject_id": envelope.execution_id,
+                })
+            ),
         )
 
     def get_project_profile(self, project_id: str) -> ProjectProfile:

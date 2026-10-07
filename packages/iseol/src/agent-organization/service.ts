@@ -16,7 +16,7 @@ export type ProjectExecutionPlan = {
   schemaVersion: 1;
   projectId: string;
   requestId: string;
-  projectRevision: number;
+  projectRevision: string;
   status: ExecutionPlanStatus;
   organization: AgentOrganizationPlan;
   tasks: WorkTask[];
@@ -24,21 +24,22 @@ export type ProjectExecutionPlan = {
 };
 
 export type IseolExecutionService = {
-  createPlan(input: ComposeAgentTeamsInput): ProjectExecutionPlan;
+  createPlan(input: ComposeAgentTeamsInput & { projectRevision?: string }): ProjectExecutionPlan;
   readyTasks(plan: ProjectExecutionPlan): WorkTask[];
-  transition(plan: ProjectExecutionPlan, taskId: string, status: WorkTask["status"], expectedRevision?: number): ProjectExecutionPlan;
-  routeFailure(plan: ProjectExecutionPlan, taskId: string, reason: string, expectedRevision?: number): ProjectExecutionPlan;
+  transition(plan: ProjectExecutionPlan, taskId: string, status: WorkTask["status"], expectedRevision?: string): ProjectExecutionPlan;
+  routeFailure(plan: ProjectExecutionPlan, taskId: string, reason: string, expectedRevision?: string): ProjectExecutionPlan;
 };
 
 export function createIseolExecutionService(now: () => string = () => new Date().toISOString()): IseolExecutionService {
-  function createPlan(input: ComposeAgentTeamsInput): ProjectExecutionPlan {
+  function createPlan(input: ComposeAgentTeamsInput & { projectRevision?: string }): ProjectExecutionPlan {
     const organization = composeAgentTeams(input);
-    const tasks = decompose(input.brief, organization);
+    const projectRevision = input.projectRevision ?? "draft-0";
+    const tasks = decompose(input.brief, organization, projectRevision);
     return {
       schemaVersion: 1,
       projectId: input.brief.projectId,
       requestId: input.brief.requestId,
-      projectRevision: 0,
+      projectRevision,
       status: "planned",
       organization,
       tasks,
@@ -87,11 +88,11 @@ export function createIseolExecutionService(now: () => string = () => new Date()
   return { createPlan, readyTasks, transition, routeFailure };
 }
 
-function assertRevision(plan: ProjectExecutionPlan, expectedRevision: number): void {
+function assertRevision(plan: ProjectExecutionPlan, expectedRevision: string): void {
   if (expectedRevision !== plan.projectRevision) throw new Error("stale project revision");
 }
 
-function decompose(brief: ProjectBriefV1, organization: AgentOrganizationPlan): WorkTask[] {
+function decompose(brief: ProjectBriefV1, organization: AgentOrganizationPlan, projectRevision: string): WorkTask[] {
   const isTodo = /todo|할s*일|체크리스트/i.test(`${brief.userGoal} ${brief.scope.join(" ")}`);
   const ids = new Map(organization.workstreams.map((workstream) => [workstream.id, workstream]));
   const agent = (workstreamId: string, role: string): string => {
@@ -102,7 +103,7 @@ function decompose(brief: ProjectBriefV1, organization: AgentOrganizationPlan): 
     schemaVersion: 1,
     id: `${brief.projectId}:${suffix}`,
     projectId: brief.projectId,
-    projectRevision: 0,
+    projectRevision,
     objective,
     dependencies,
     assignedAgentId: agent(workstreamId, role),
