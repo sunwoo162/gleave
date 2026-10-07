@@ -316,6 +316,11 @@ class SQLiteStore:
                     request_id TEXT NOT NULL, project_id TEXT, project_revision TEXT,
                     event_type TEXT NOT NULL, event_json TEXT NOT NULL, published_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS project_activity_events (
+                    cursor INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL,
+                    project_revision TEXT NOT NULL, event_json TEXT NOT NULL,
+                    event_hash TEXT NOT NULL, occurred_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS plugin_registrations (
                     plugin_id TEXT PRIMARY KEY, manifest_version TEXT NOT NULL,
                     status TEXT NOT NULL, manifest_json TEXT NOT NULL,
@@ -565,6 +570,9 @@ class SQLiteStore:
             raise KeyError(f"Project not found: {project_id}")
         if row["revision"] != project_revision:
             raise StaleProjectRevision(f"stale project revision for {project_id}: {project_revision}")
+
+    def _ensure_activity_revision(self, project_id: str, project_revision: str) -> None:
+        self._ensure_planning_revision(project_id, project_revision)
 
     def save_planning_session(self, session: PlanningSession) -> None:
         self._ensure_planning_revision(session.project_id, session.project_revision)

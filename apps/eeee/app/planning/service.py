@@ -7,6 +7,8 @@ from typing import Literal
 from uuid import uuid4
 
 from app.domain.models import Project, RequestBrief
+from app.activity.models import ActivityEvent
+from app.activity.store import ActivityLedger
 from app.planning.models import PlanningArtifact, PlanningDecision, PlanningHandoff, PlanningSession
 from app.runtime.store import StaleProjectRevision
 from app.storage.sqlite import SQLiteStore
@@ -33,8 +35,9 @@ def _content_hash(content: dict[str, object]) -> str:
 
 
 class PlanningService:
-    def __init__(self, store: SQLiteStore) -> None:
+    def __init__(self, store: SQLiteStore, activity: ActivityLedger | None = None) -> None:
         self.store = store
+        self.activity = activity
 
     def start(
         self, project: Project, request: RequestBrief, mode: Literal["deep", "quick"]
@@ -48,6 +51,8 @@ class PlanningService:
             revision=1, created_at=now, updated_at=now,
         )
         self.store.save_planning_session(session)
+        self._record(session, "planning.started", "Start planning session", "Every project gets a planning gate",
+                     [], [f"planning://{session.session_id}"], "active")
         return session
 
     def get_session(self, session_id: str) -> PlanningSession:
@@ -78,6 +83,8 @@ class PlanningService:
             "revision": session.revision + 1, "updated_at": now,
         })
         self.store.save_planning_session(updated)
+        self._record(updated, "decision.made", decision.summary, decision.reason, decision.alternatives,
+                     [f"planning://{session.session_id}"], "completed")
         return updated
 
     def approve(self, session_id: str, expected_revision: int, actor: str) -> PlanningHandoff:
@@ -175,4 +182,18 @@ class PlanningService:
         updated = session.model_copy(update={"status": "handed_off", "revision": session.revision + 1,
                                              "updated_at": now})
         self.store.save_planning_session(updated)
+        self._record(updated, "planning.handoff.created", "Create approved planning handoff",
+                     "ISEOL must receive a structured plan before execution", [], handoff.artifact_ids, "completed")
         return handoff
+
+    def _record(self, session: PlanningSession, event_type: str, summary: str, reason: str,
+                alternatives: list[str], evidence_refs: list[str], status: str) -> None:
+        if self.activity is None:
+            return
+        self.activity.append(ActivityEvent(
+            event_type=event_type, project_id=session.project_id, project_revision=session.project_revision,
+            node_id=f"planning:{session.session_id}", actor_type="coordinator", actor_id="EEEE.PlanningRoom",
+            summary=summary, reason=reason, alternatives=alternatives, selected_because=summary,
+            outputs=[f"planning://{session.session_id}"], evidence_refs=evidence_refs,
+            status=status, occurred_at=_now(),
+        ))

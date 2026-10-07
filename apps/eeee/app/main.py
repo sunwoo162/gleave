@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agent.openhands_runtime import OpenHandsRuntime
 from app.agent.protocol import AgentRuntime
+from app.activity.store import ActivityLedger
 from app.api.service import ApiFlowService
 from app.api.routes import (
     build_api_router,
@@ -80,7 +81,8 @@ def create_app(
             )
         )
     coordinator = Coordinator(store, researcher=configured_researcher, verifier=verifier)
-    planning_service = PlanningService(store)
+    activity_ledger = ActivityLedger(store)
+    planning_service = PlanningService(store, activity_ledger)
     capability_router = CapabilityRouter(build_default_registry())
     configured_connectors = {
         connector_id
@@ -152,6 +154,7 @@ def create_app(
     project_documents = ProjectDocumentService(store, configured_notion, trust_gate, mobile_bridge.publish)
     project_evidence = ProjectEvidenceService(store, trust_gate, mobile_bridge.publish)
     application.state.coordinator = coordinator
+    application.state.activity_ledger = activity_ledger
     application.state.claim_latch_client = claim_latch_client
     application.state.claim_latch_process = claim_latch_process
     application.state.trust_gate = trust_gate
