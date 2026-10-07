@@ -20,6 +20,9 @@ body { margin: 0; background: radial-gradient(circle at top right, #223b3e, #101
 .project-map-panel { scroll-margin-top: 1rem; }
 .project-map-summary { color: #b9c4cc; margin: .3rem 0 1rem; }
 .project-map-canvas { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .8rem; padding: 1rem; border: 1px solid #35434d; border-radius: 14px; background: radial-gradient(circle at 50% 0, rgba(45, 127, 114, .18), transparent 60%); }
+.project-map-node[data-group="planning"] { border-color: #6b82ed; }
+.project-map-node[data-group="quality"] { border-color: #cf8b62; }
+.project-map-node[data-group="memory"] { border-color: #a47be8; }
 .project-map-node { display: grid; gap: .4rem; min-height: 7rem; text-align: left; border: 1px solid #40505b; border-radius: 14px; background: #172129; color: #eef3f7; padding: 1rem; box-shadow: 0 12px 22px rgba(0, 0, 0, .2); transform: translateZ(0); transition: transform .16s ease, border-color .16s ease, background .16s ease; }
 .project-map-node:hover { transform: translateY(-3px); border-color: #71e6c2; }
 .project-map-node.active { border-color: #71e6c2; box-shadow: 0 0 0 2px rgba(113, 230, 194, .22), 0 12px 22px rgba(0, 0, 0, .25); }

@@ -336,6 +336,9 @@ function renderProjectMapDetails(node) {
   status.textContent = `${node.role} · ${node.status}`;
   const facts = document.createElement("dl");
   const fields = [
+    ["설명", node.reason || "기록 없음"],
+    ["선택 이유", node.selectedBecause || "기록 없음"],
+    ["검토한 대안", (node.alternatives || []).join(", ") || "기록 없음"],
     ["현재 커밋", node.currentCommit || "기록 없음"],
     ["변경 파일", (node.changedFiles || []).join(", ") || "기록 없음"],
     ["ClaimLatch", node.claimLatchStatus || "unavailable"],
@@ -362,6 +365,7 @@ function renderProjectMap(snapshot) {
     const card = document.createElement("button");
     card.type = "button";
     card.className = `project-map-node ${node.status}${active.has(node.id) ? " active" : ""}`;
+    card.dataset.group = node.group || "execution";
     card.dataset.nodeId = node.id;
     const heading = document.createElement("strong");
     heading.textContent = node.title;
