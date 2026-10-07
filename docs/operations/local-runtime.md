@@ -81,6 +81,13 @@ The ClaimLatch integration profile is `claimlatch-v0.2.0`. Audit records preserv
 profile separately from the bundled engine version (`0.3.86`), and `/health` exposes only
 non-secret status metadata (`configured`, `advisory`, or `required`).
 
+ClaimLatch is shipped as Gleave's default official plugin. Configure
+`CLAIMLATCH_LLM_MODEL`, optional `CLAIMLATCH_LLM_API_KEY`/`CLAIMLATCH_LLM_BASE_URL`, and
+`TAVILY_API_KEY` in `apps/eeee/.env`. EEEE automatically starts the local adapter on
+`127.0.0.1:4318` and owns its lifecycle; `CLAIM_LATCH_ADAPTER_URL` is only needed when
+connecting to an externally managed adapter. Missing provider credentials do not stop
+Gleave, but they leave the trust gate advisory and prevent release or memory promotion.
+
 For a ClaimLatch client that must be trusted by EEEE, pass the coordinator's `SQLiteStore.claimlatch_audits` to `ClaimLatchClient`, configure the current project revision resolver, and keep the client fail-closed. The audit row is written only after the adapter returns a schema-valid envelope whose subject, project, and revision match the request.
 
 Run the focused local verification:

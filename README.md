@@ -68,6 +68,7 @@ Requirements: Python 3.12+, Node.js 20+, npm, and Windows PowerShell for the hel
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".\apps\eeee[dev,desktop]"
 Push-Location .\packages\iseol; npm ci; Pop-Location
+Push-Location .\packages\claimlatch; npm ci; Pop-Location
 Push-Location .\integrations\claimlatch-adapter; npm ci; Pop-Location
 ```
 
@@ -88,6 +89,12 @@ Run the focused unified verification, or the full EEEE suite:
 ```
 
 No hosted login or central server is required. Optional Notion, mobile, calendar, and future channel adapters connect to the local core. Never commit `.env`, credentials, runtime databases, `node_modules`, virtual environments, `dist`, or `__pycache__`.
+
+ClaimLatch is installed as the official default plugin. Put its provider settings in
+`apps/eeee/.env`; when both `CLAIMLATCH_LLM_MODEL` and `TAVILY_API_KEY` are present,
+EEEEs starts the bundled loopback adapter automatically and shuts it down with the
+application. Users do not need to start a second terminal process. Without those
+credentials, EEEE remains usable but release and memory promotion stay blocked.
 
 ## One-sentence project flow
 

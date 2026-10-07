@@ -29,6 +29,7 @@ from app.domain.errors import ApprovalError
 from app.execution.runner import WorkspaceCommandRunner
 from app.execution.verifier import WorkspaceVerifier
 from app.integrations.claimlatch_client import ClaimLatchClient
+from app.integrations.claimlatch_process import ClaimLatchProcessManager
 from app.integrations.notion_client import NotionClient
 from app.kernel.service import KernelService
 from app.mobile.bridge import MobileBridge
@@ -103,10 +104,23 @@ def create_app(
             app_settings.app_name,
             str(default_workspace),
         )
+    claim_latch_process = None
+    claim_latch_adapter_url = app_settings.claim_latch_adapter_url
+    if not claim_latch_adapter_url and app_settings.claim_latch_auto_start:
+        claim_latch_process = ClaimLatchProcessManager(
+            repo_root=Path(__file__).resolve().parents[3],
+            port=app_settings.claim_latch_adapter_port,
+            llm_model=app_settings.claimlatch_llm_model,
+            llm_api_key=app_settings.claimlatch_llm_api_key,
+            llm_base_url=app_settings.claimlatch_llm_base_url,
+            tavily_api_key=app_settings.tavily_api_key,
+        )
+        started = claim_latch_process.start()
+        claim_latch_adapter_url = started.url if started.started else None
     claim_latch_client = None
-    if app_settings.claim_latch_adapter_url:
+    if claim_latch_adapter_url:
         claim_latch_client = ClaimLatchClient(
-            app_settings.claim_latch_adapter_url,
+            claim_latch_adapter_url,
             audit_store=store.claimlatch_audits,
             policy_version=app_settings.claim_latch_policy_version,
             adapter_version=app_settings.claim_latch_adapter_version,
@@ -137,10 +151,15 @@ def create_app(
     project_evidence = ProjectEvidenceService(store, trust_gate, mobile_bridge.publish)
     application.state.coordinator = coordinator
     application.state.claim_latch_client = claim_latch_client
+    application.state.claim_latch_process = claim_latch_process
     application.state.trust_gate = trust_gate
     application.state.mobile_bridge = mobile_bridge
     application.state.project_documents = project_documents
     application.state.project_evidence = project_evidence
+    if claim_latch_process is not None:
+        @application.on_event("shutdown")
+        async def stop_claim_latch_plugin() -> None:
+            claim_latch_process.stop()
     runtime = agent_runtime or OpenHandsRuntime(
         api_key=app_settings.llm_api_key,
         model=app_settings.llm_model,

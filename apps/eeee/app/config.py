@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     notion_api_version: str = "2026-03-11"
     iseol_bridge_token: str | None = None
     claim_latch_adapter_url: str | None = None
+    claim_latch_auto_start: bool = True
+    claim_latch_adapter_port: int = 4318
+    claimlatch_llm_model: str | None = None
+    claimlatch_llm_api_key: str | None = None
+    claimlatch_llm_base_url: str | None = None
+    tavily_api_key: str | None = None
     claim_latch_policy_version: str = "claimlatch-policy-v1"
     claim_latch_adapter_version: str = "eeee-claimlatch-adapter-v1"
     claim_latch_profile_version: str = "claimlatch-v0.2.0"
