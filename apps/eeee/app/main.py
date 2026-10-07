@@ -141,7 +141,7 @@ def create_app(
     )
     coordinator.trust_gate = trust_gate
     coordinator.trust_pipeline = TrustPipeline(
-        trust_gate, audit_store=store.claimlatch_audits
+        trust_gate, audit_store=store.claimlatch_audits, activity=activity_ledger
     )
     configured_notion = notion_client
     if configured_notion is None and app_settings.notion_token and app_settings.notion_parent_page_id:
@@ -178,6 +178,7 @@ def create_app(
         capability_router=capability_router,
         project_provisioner=project_provisioner,
         trust_gate=trust_gate,
+        trust_pipeline=coordinator.trust_pipeline,
         event_publisher=mobile_bridge.publish,
     )
     application.state.api_flow = api_flow

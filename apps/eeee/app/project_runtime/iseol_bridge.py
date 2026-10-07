@@ -8,6 +8,7 @@ from typing import Any
 
 from app.domain.models import RequestBrief
 from app.integrations.contracts import ProjectBriefV1
+from app.iseol.agents import AgentTeamFactory
 from app.planning.models import PlanningHandoff
 
 
@@ -72,6 +73,12 @@ class IseolPlanBridge:
             raise RuntimeError("invalid ISEOL plan")
         if planning_handoff is not None:
             value["planningHandoff"] = planning_handoff.model_dump(mode="json", by_alias=True)
+        # Keep the specialist organization explicit even when an external
+        # planner returns only a coarse task list. The executor and UI use this
+        # graph as the durable handoff contract.
+        value["agentGraph"] = AgentTeamFactory.default_graph(request.goal).model_dump(
+            mode="json", by_alias=True
+        )
         return value
 
     @staticmethod

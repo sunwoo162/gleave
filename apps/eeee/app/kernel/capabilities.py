@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
@@ -140,6 +141,7 @@ class ProjectExecutionCapability:
                 request_id=state.request_id,
                 planning_handoff=planning_handoff,
             )
+            agent_graph = _read_agent_graph(provisioned.execution_plan_path)
             todo_run = None
             memory_records = []
             if is_todo_request(brief.goal, [brief.target_type, *brief.acceptance_criteria]):
@@ -173,7 +175,10 @@ class ProjectExecutionCapability:
                         "projectRevision": project.revision,
                         "status": "completed",
                         "artifacts": prepared.artifacts,
-                        "agentTeams": [{"agent": "ISEOL", "role": "orchestrator"}],
+                        "agentTeams": [
+                            {"id": agent["id"], "agent": agent["id"], "role": agent["role"]}
+                            for agent in agent_graph.get("agents", [])
+                        ],
                         "handoffs": [],
                         "deterministicVerification": {
                             "status": "PASS",
@@ -230,6 +235,7 @@ class ProjectExecutionCapability:
                 "projectId": project.id, "projectProfile": profile.model_dump(mode="json", by_alias=True),
                 "missingConnectors": missing, "documentExecutionId": document_execution_id,
                 "executionPlanPath": provisioned.execution_plan_path,
+                "agentGraph": agent_graph,
                 "planningSessionId": planning_handoff.planning_session_id,
                 "planningHandoffId": planning_handoff.handoff_id,
                 "qaReportPath": todo_run.qa_report_path if todo_run is not None else None,
@@ -264,3 +270,16 @@ class ProjectExecutionCapability:
         status = (ExecutionStatus.FAILED if child.error is not None and child.error.code == "stale_project_revision"
                   else child.status)
         return CapabilityOutcome(output, status, child.error)
+
+
+def _read_agent_graph(path: str | None) -> dict[str, Any]:
+    if not path:
+        return {"schemaVersion": "iseol-agent-graph.v1", "agents": []}
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"schemaVersion": "iseol-agent-graph.v1", "agents": []}
+    graph = payload.get("agentGraph") if isinstance(payload, dict) else None
+    return graph if isinstance(graph, dict) and isinstance(graph.get("agents"), list) else {
+        "schemaVersion": "iseol-agent-graph.v1", "agents": []
+    }
