@@ -72,3 +72,26 @@ def test_repeated_provisioning_is_idempotent_and_survives_store_reopen(tmp_path)
     assert reopened.get_project_profile("project-1") == first.profile
     assert len(first.profile.connectors) == len(second.profile.connectors)
 
+
+def test_todo_request_provisions_an_actual_fsd_project(tmp_path) -> None:
+    store = SQLiteStore(tmp_path / "state.sqlite3")
+    store.init()
+    provisioner = ProjectProvisioner(store)
+    todo_request = RequestBrief(
+        raw_text="Todo 앱 만들어줘",
+        goal="Todo 앱 만들어줘",
+        target_type="todo_app",
+        constraints=["local-first"],
+        acceptance_criteria=["todo can be added and completed"],
+    )
+
+    provisioner.provision(
+        project(tmp_path / "todo-workspace"),
+        todo_request,
+        memory_ids=[],
+        qa_baseline_ids=[],
+    )
+
+    assert (tmp_path / "todo-workspace" / "index.html").is_file()
+    assert (tmp_path / "todo-workspace" / "src" / "entities" / "todo" / "model.js").is_file()
+

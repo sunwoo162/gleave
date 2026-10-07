@@ -6,6 +6,7 @@ from pathlib import Path
 from app.domain.models import Project, RequestBrief
 from app.project_runtime.connectors import ProjectConnector, build_default_connectors
 from app.project_runtime.models import ProjectProfile, ProjectProvisioningResult
+from app.project_runtime.scaffold import create_todo_scaffold
 from app.storage.sqlite import SQLiteStore
 
 
@@ -30,9 +31,13 @@ class ProjectProvisioner:
     ) -> ProjectProvisioningResult:
         existing = self._existing_current_profile(project)
         if existing is not None:
+            if _is_todo_request(existing.goal, existing.scope):
+                create_todo_scaffold(project.workspace)
             return _result(existing)
 
         Path(project.workspace).mkdir(parents=True, exist_ok=True)
+        if _is_todo_request(request.goal, [request.target_type, *request.acceptance_criteria]):
+            create_todo_scaffold(project.workspace)
         profile = ProjectProfile(
             project_id=project.id,
             project_revision=project.revision,
@@ -78,4 +83,9 @@ def _result(profile: ProjectProfile) -> ProjectProvisioningResult:
         if binding.state == "awaiting_configuration"
     )
     return ProjectProvisioningResult(profile=profile, missing_connectors=missing)
+
+
+def _is_todo_request(goal: str, scope: list[str]) -> bool:
+    text = " ".join([goal, *scope]).lower()
+    return "todo" in text or "할 일" in text or "체크리스트" in text
 
