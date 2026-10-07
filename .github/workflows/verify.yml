@@ -36,13 +36,11 @@ jobs:
           Start-Process -FilePath node -ArgumentList @('--import', 'tsx', 'src/standalone.ts', '--port', '4318') -WorkingDirectory $adapter -WindowStyle Hidden
           $ready = $false
           for ($i = 0; $i -lt 50; $i++) {
-            try {
-              $client = New-Object Net.Sockets.TcpClient
-              $client.Connect('127.0.0.1', 4318)
-              $client.Dispose()
+            if (Test-NetConnection -ComputerName 127.0.0.1 -Port 4318 -InformationLevel Quiet -WarningAction SilentlyContinue) {
               $ready = $true
               break
-            } catch { Start-Sleep -Milliseconds 100 }
+            }
+            Start-Sleep -Milliseconds 100
           }
           if (-not $ready) { throw 'Local ClaimLatch adapter did not become ready' }
       - name: Build and test ISEOL contracts, QA, and organization
