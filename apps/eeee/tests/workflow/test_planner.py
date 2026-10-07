@@ -54,6 +54,13 @@ def test_login_todo_web_request_selects_web_runtime_profile():
     assert brief.canonical_intent == "project.create.web_app"
 
 
+def test_plain_todo_web_request_selects_web_runtime_profile():
+    brief = parse_request("Todo 웹 만들어줘")
+
+    assert brief.target_type == "web_app"
+    assert brief.runtime_profile == "web_app"
+
+
 def test_local_todo_request_keeps_static_runtime_profile():
     brief = parse_request("Todo 앱 만들어줘")
 
