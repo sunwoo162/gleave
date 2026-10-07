@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/standalone.ts",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/adapter.test.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.0"
