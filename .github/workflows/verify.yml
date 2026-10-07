@@ -29,20 +29,6 @@ jobs:
       - name: Check repository hygiene
         shell: pwsh
         run: .\scripts\check-repository.ps1
-      - name: Start local ClaimLatch adapter
-        shell: pwsh
-        run: |
-          $adapter = (Resolve-Path .\integrations\claimlatch-adapter).Path
-          Start-Process -FilePath node -ArgumentList @('--import', 'tsx', 'src/standalone.ts', '--port', '4318') -WorkingDirectory $adapter -WindowStyle Hidden
-          $ready = $false
-          for ($i = 0; $i -lt 50; $i++) {
-            if (Test-NetConnection -ComputerName 127.0.0.1 -Port 4318 -InformationLevel Quiet -WarningAction SilentlyContinue) {
-              $ready = $true
-              break
-            }
-            Start-Sleep -Milliseconds 100
-          }
-          if (-not $ready) { throw 'Local ClaimLatch adapter did not become ready' }
       - name: Build and test ISEOL contracts, QA, and organization
         working-directory: packages/iseol
         shell: pwsh

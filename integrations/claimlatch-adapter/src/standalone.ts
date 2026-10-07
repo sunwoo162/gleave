@@ -1,4 +1,3 @@
-import { createDefaultClaimLatch } from "../../../packages/claimlatch/src/index.ts";
 import { createClaimLatchAdapterServer } from "./server.js";
 import { verifyStructuredAction } from "./structured-output-verifier.js";
 
@@ -9,12 +8,19 @@ const model = process.env.CLAIMLATCH_LLM_MODEL;
 const tavilyApiKey = process.env.TAVILY_API_KEY;
 
 const localMode = process.env.CLAIMLATCH_LOCAL_MODE === "1" || !model || !tavilyApiKey;
-const claimLatch = localMode ? undefined : createDefaultClaimLatch({
-  llmModel: model,
-  tavilyApiKey,
-  ...(process.env.CLAIMLATCH_LLM_API_KEY ? { llmApiKey: process.env.CLAIMLATCH_LLM_API_KEY } : {}),
-  ...(process.env.CLAIMLATCH_LLM_BASE_URL ? { llmBaseUrl: process.env.CLAIMLATCH_LLM_BASE_URL } : {}),
-});
+// Keep the default installation dependency-free. The provider-backed
+// ClaimLatch package is loaded only when credentials explicitly opt into it;
+// local deterministic verification must work with the adapter package alone.
+const claimLatch = localMode
+  ? undefined
+  : await import("../../../packages/claimlatch/src/index.ts").then(({ createDefaultClaimLatch }) =>
+      createDefaultClaimLatch({
+        llmModel: model!,
+        tavilyApiKey: tavilyApiKey!,
+        ...(process.env.CLAIMLATCH_LLM_API_KEY ? { llmApiKey: process.env.CLAIMLATCH_LLM_API_KEY } : {}),
+        ...(process.env.CLAIMLATCH_LLM_BASE_URL ? { llmBaseUrl: process.env.CLAIMLATCH_LLM_BASE_URL } : {}),
+      }),
+    );
 const localVerifyText = async (input: import("./contracts.js").TextVerificationInput) => {
   const draft = input.draft.trim();
   const passed = draft.length > 0;
