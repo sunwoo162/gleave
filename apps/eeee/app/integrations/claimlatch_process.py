@@ -39,6 +39,13 @@ class ClaimLatchProcessManager:
     def start(self) -> ClaimLatchProcessResult:
         if self._process is not None and self._process.poll() is None:
             return ClaimLatchProcessResult(url=self.url, started=True, reason="already running")
+        try:
+            with socket.create_connection(("127.0.0.1", self.port), timeout=0.1):
+                # Another EEEE instance already owns the local adapter. Reuse
+                # it instead of racing a second Node process onto the port.
+                return ClaimLatchProcessResult(url=self.url, started=True, reason="already available")
+        except OSError:
+            pass
 
         adapter_root = self.repo_root / "integrations" / "claimlatch-adapter"
         npm = "npm.cmd" if os.name == "nt" else "npm"
@@ -92,11 +99,8 @@ class ClaimLatchProcessManager:
         if os.name == "nt" and process.poll() is None:
             # npm.cmd is only a wrapper; terminating it alone leaves the Node
             # adapter child listening on the fixed port between app restarts.
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                capture_output=True,
-                check=False,
-            )
+            pid = int(process.pid)
+            os.system(f"taskkill /PID {pid} /T /F >NUL 2>&1")
         if process.poll() is not None:
             return
         process.terminate()

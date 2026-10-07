@@ -17,6 +17,12 @@ class FakeProcess:
     def wait(self, timeout=0):
         return 0
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
 
 def test_manager_starts_bundled_claimlatch_plugin_with_inherited_credentials(monkeypatch, tmp_path) -> None:
     spawned = {}
@@ -28,7 +34,14 @@ def test_manager_starts_bundled_claimlatch_plugin_with_inherited_credentials(mon
         return process
 
     monkeypatch.setattr("app.integrations.claimlatch_process.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("app.integrations.claimlatch_process.socket.create_connection", lambda *args, **kwargs: FakeSocket())
+    calls = 0
+    def connection(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("not ready before spawn")
+        return FakeSocket()
+    monkeypatch.setattr("app.integrations.claimlatch_process.socket.create_connection", connection)
     manager = ClaimLatchProcessManager(
         repo_root=tmp_path,
         port=4318,
