@@ -58,7 +58,7 @@ def test_executor_runs_only_ready_nodes_and_verifies_every_handoff(tmp_path):
 
     assert report.status == "completed"
     assert set(runtime.calls) == {"requirements", "design", "frontend", "backend", "data", "test", "review", "integration"}
-    assert trust.calls == runtime.calls
+    assert set(trust.calls) == set(runtime.calls)
     assert all(item.status == "passed" for item in report.agents)
 
 

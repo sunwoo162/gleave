@@ -1,8 +1,9 @@
-"""Sequential, dependency-aware execution of the ISEOL specialist graph."""
+"""Dependency-aware, parallel execution of the ISEOL specialist graph."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
 
@@ -57,85 +58,114 @@ class AgentGraphExecutor:
         runtime: AgentRuntime,
         trust_pipeline: TrustPipeline,
         workspace: Path,
+        max_parallelism: int = 3,
     ) -> None:
         self.runtime = runtime
         self.trust_pipeline = trust_pipeline
         self.workspace = workspace
+        if max_parallelism < 1:
+            raise ValueError("max_parallelism must be positive")
+        self.max_parallelism = max_parallelism
 
     def execute(self, graph: AgentGraph, envelope: ExecutionEnvelope) -> AgentExecutionReport:
-        records: list[AgentExecutionRecord] = []
+        records: dict[str, AgentExecutionRecord] = {}
         completed_ids: set[str] = set()
         blocked_ids: set[str] = set()
-        failed = False
+        failed_ids: set[str] = set()
+        remaining = {node.id: node for node in graph.agents}
+        handoffs: dict[str, AgentExecutionRecord] = {}
 
-        for node in graph.agents:
-            started = datetime.now(timezone.utc)
-            if any(dependency in blocked_ids or dependency not in completed_ids for dependency in node.dependencies):
-                blocked_ids.add(node.id)
-                records.append(self._blocked(node, started, "A dependency did not produce a verified handoff"))
-                continue
-
-            result = self.runtime.run(
-                AgentRequest(
-                    prompt=(
-                        f"You are ISEOL agent role={node.role} agentId={node.id} "
-                        f"taskId={node.task_id}. Goal: {node.goal}"
-                    ),
-                    workspace=self.workspace,
-                    allowed_actions=list(node.allowed_tools),
-                    run_id=f"{envelope.execution_id}:{node.id}",
-                )
-            )
-            evidence_ids = [
-                str(event["evidenceId"])
-                for event in result.events
-                if isinstance(event, dict) and isinstance(event.get("evidenceId"), str)
+        while remaining:
+            to_block = [
+                node for node in remaining.values()
+                if any(dependency in blocked_ids or dependency in failed_ids for dependency in node.dependencies)
             ]
-            if result.status != "completed":
-                failed = True
-                failed_record = AgentExecutionRecord(
-                    agentId=node.id, taskId=node.task_id, role=node.role, status="failed",
-                    summary=result.summary, changedFiles=list(result.changed_files),
-                    evidenceIds=evidence_ids, claimLatchDecision="NOT_RUN",
-                    reason=result.error or "Agent runtime did not complete",
-                    startedAt=started, completedAt=datetime.now(timezone.utc),
-                )
-                records.append(failed_record)
+            for node in to_block:
+                records[node.id] = self._blocked(node, datetime.now(timezone.utc), "A dependency did not produce a verified handoff")
                 blocked_ids.add(node.id)
-                continue
+                remaining.pop(node.id)
+            ready = [
+                node for node in remaining.values()
+                if all(dependency in completed_ids for dependency in node.dependencies)
+            ]
+            if not ready:
+                for node in remaining.values():
+                    records[node.id] = self._blocked(node, datetime.now(timezone.utc), "Agent graph has an unresolved dependency or cycle")
+                    blocked_ids.add(node.id)
+                break
+            batch = ready[: self.max_parallelism]
+            with ThreadPoolExecutor(max_workers=len(batch), thread_name_prefix="iseol-agent") as pool:
+                futures = {
+                    node.id: pool.submit(self._run_node, node, envelope, handoffs)
+                    for node in batch
+                }
+                for node in batch:
+                    record = futures[node.id].result()
+                    records[node.id] = record
+                    if record.status == "passed":
+                        completed_ids.add(node.id)
+                        handoffs[node.id] = record
+                    elif record.status == "failed":
+                        failed_ids.add(node.id)
+                    else:
+                        blocked_ids.add(node.id)
+                    remaining.pop(node.id)
 
-            child = envelope.model_copy(update={
-                "execution_id": f"{envelope.execution_id}:{node.id}",
-                "capability_id": f"iseol.agent.{node.id}",
-                "evidence_ids": tuple(evidence_ids),
-            })
-            trust = self.trust_pipeline.verify_agent_result(
-                child, agent_id=node.id, role=node.role, summary=result.summary,
-                evidence_ids=evidence_ids, changed_files=list(result.changed_files),
-            )
-            if trust.decision != "PASS":
-                blocked_ids.add(node.id)
-                records.append(AgentExecutionRecord(
-                    agentId=node.id, taskId=node.task_id, role=node.role, status="blocked",
-                    summary=result.summary, changedFiles=list(result.changed_files),
-                    evidenceIds=evidence_ids, claimLatchDecision=trust.decision,
-                    reason=trust.reason, startedAt=started, completedAt=datetime.now(timezone.utc),
-                ))
-                continue
-
-            completed_ids.add(node.id)
-            records.append(AgentExecutionRecord(
-                agentId=node.id, taskId=node.task_id, role=node.role, status="passed",
-                summary=result.summary, changedFiles=list(result.changed_files),
-                evidenceIds=evidence_ids, claimLatchDecision=trust.decision,
-                reason=trust.reason, startedAt=started, completedAt=datetime.now(timezone.utc),
-            ))
-
-        status: RunStatus = "failed" if failed else (
+        status: RunStatus = "failed" if failed_ids else (
             "completed" if len(completed_ids) == len(graph.agents) else "blocked"
         )
         return AgentExecutionReport(
-            graphVersion=graph.schema_version, status=status, agents=records
+            graphVersion=graph.schema_version, status=status,
+            agents=[records[node.id] for node in graph.agents],
+        )
+
+    def _run_node(self, node: AgentNode, envelope: ExecutionEnvelope,
+                  handoffs: dict[str, AgentExecutionRecord]) -> AgentExecutionRecord:
+        started = datetime.now(timezone.utc)
+        dependency_context = "\n".join(
+            f"{dependency}: {handoffs[dependency].summary}; evidence={handoffs[dependency].evidence_ids}"
+            for dependency in node.dependencies if dependency in handoffs
+        ) or "none"
+        prompt = (
+            f"{node.system_prompt}\n"
+            f"You are ISEOL agent role={node.role} agentId={node.id} taskId={node.task_id}.\n"
+            f"Goal: {node.goal}\n"
+            f"Acceptance criteria: {node.acceptance_criteria}\n"
+            f"Verified dependency handoffs:\n{dependency_context}\n"
+            "Return only work backed by files, commands, tests, and evidence."
+        )
+        result = self.runtime.run(AgentRequest(
+            prompt=prompt, workspace=self.workspace,
+            allowed_actions=list(node.allowed_tools), run_id=f"{envelope.execution_id}:{node.id}",
+        ))
+        evidence_ids = [
+            str(event["evidenceId"])
+            for event in result.events
+            if isinstance(event, dict) and isinstance(event.get("evidenceId"), str)
+        ]
+        if result.status != "completed":
+            return AgentExecutionRecord(
+                agentId=node.id, taskId=node.task_id, role=node.role, status="failed",
+                summary=result.summary, changedFiles=list(result.changed_files),
+                evidenceIds=evidence_ids, claimLatchDecision="NOT_RUN",
+                reason=result.error or "Agent runtime did not complete",
+                startedAt=started, completedAt=datetime.now(timezone.utc),
+            )
+        child = envelope.model_copy(update={
+            "execution_id": f"{envelope.execution_id}:{node.id}",
+            "capability_id": f"iseol.agent.{node.id}",
+            "evidence_ids": tuple(evidence_ids),
+        })
+        trust = self.trust_pipeline.verify_agent_result(
+            child, agent_id=node.id, role=node.role, summary=result.summary,
+            evidence_ids=evidence_ids, changed_files=list(result.changed_files),
+        )
+        return AgentExecutionRecord(
+            agentId=node.id, taskId=node.task_id, role=node.role,
+            status="passed" if trust.decision == "PASS" else "blocked",
+            summary=result.summary, changedFiles=list(result.changed_files),
+            evidenceIds=evidence_ids, claimLatchDecision=trust.decision,
+            reason=trust.reason, startedAt=started, completedAt=datetime.now(timezone.utc),
         )
 
     @staticmethod
