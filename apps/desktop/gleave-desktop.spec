@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 
 
 spec_dir = Path(SPECPATH).resolve()
@@ -18,10 +18,15 @@ hiddenimports = [
 ]
 hiddenimports.extend(collect_submodules("pydantic_settings"))
 
+pyside_binaries = collect_dynamic_libs("PySide6")
+shiboken_binaries = collect_dynamic_libs("shiboken6")
+shiboken_dll = next(source for source, _ in shiboken_binaries if Path(source).name == "shiboken6.abi3.dll")
+binaries = [*pyside_binaries, *shiboken_binaries, (shiboken_dll, "PySide6")]
+
 a = Analysis(
     [str(eeee_root / "app" / "desktop" / "__main__.py")],
     pathex=[str(eeee_root)],
-    binaries=[],
+    binaries=binaries,
     datas=[(str(static_dir), "app/static")],
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -41,7 +46,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
 )
