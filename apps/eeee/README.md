@@ -72,6 +72,25 @@ Copy `.env.example` to `.env` when environment configuration is needed.
 
 OpenHands is optional. Research, comparison, approval, and the UI remain available without `LLM_API_KEY` or `LLM_MODEL`; an execution run is recorded as `unavailable` with a configuration error until those values and a compatible OpenHands SDK are installed.
 
+To enable the real ISEOL coding-agent runtime in the same virtual environment,
+install the pinned SDK/tool pair and configure an OpenHands-compatible model:
+
+```powershell
+python -m pip install -e ".[agent,desktop,dev]"
+$env:LLM_MODEL = "your-provider/model-name"
+$env:LLM_API_KEY = "your-model-provider-key"
+# Optional for an OpenAI-compatible endpoint:
+# $env:LLM_BASE_URL = "https://your-provider.example/v1"
+python -m app.desktop
+```
+
+The application does not accept a browser ChatGPT login as an API credential.
+The desktop shell must receive an explicit model endpoint/key, and it keeps the
+run unavailable instead of claiming that an AI agent completed work when the
+runtime is not configured. The pinned `openhands-sdk` and `openhands-tools`
+versions are installed together because the distributions are released as a
+matched pair.
+
 ## Approval model
 
 The first execution always crosses an approval boundary:
