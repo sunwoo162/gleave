@@ -47,6 +47,17 @@ class AssistantContext(BaseModel):
     user_preferences: dict[str, Any] = Field(default_factory=dict)
 
 
+class ResponseVerification(BaseModel):
+    """Verification receipt attached to every EEEE assistant response."""
+
+    decision: Literal["PASS", "WARN", "BLOCKED"]
+    reason: str = Field(min_length=1)
+    profile_version: str = Field(min_length=1)
+    subject_id: str = Field(min_length=1)
+    claim_latch_receipt_id: str | None = None
+    claim_latch_report_id: str | None = None
+
+
 class CapabilityPlan(BaseModel):
     capability_id: str = Field(min_length=1)
     summary: str = Field(min_length=1)

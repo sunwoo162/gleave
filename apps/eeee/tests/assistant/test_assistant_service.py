@@ -31,6 +31,8 @@ def test_assistant_service_creates_one_project_runtime_for_project_intent(tmp_pa
     assert Path(result.project_profile.workspace).is_dir()
     assert result.project_profile.project_id == result.project_id
     assert result.status == "awaiting_configuration"
+    assert result.response_verification.profile_version == "claimlatch-v0.2.0"
+    assert result.response_verification.decision in {"PASS", "WARN", "BLOCKED"}
     assert service.kernel is not None
     records = ExecutionStore(store).list_for_project(result.project_id)
     assert any(record.tool_id == "iseol" for record in records)
@@ -55,6 +57,9 @@ def test_assistant_service_does_not_create_project_for_a_reminder(tmp_path) -> N
     assert result.project_id is None
     assert result.project_profile is None
     assert result.status == "selected"
+    assert result.response_verification.profile_version == "claimlatch-v0.2.0"
+    assert result.response_verification.decision == "WARN"
+    assert "project identity" in result.response_verification.reason.lower()
 
 
 def test_assistant_service_reports_initial_stale_child_as_blocked_observation(tmp_path) -> None:
@@ -81,3 +86,4 @@ def test_assistant_service_reports_initial_stale_child_as_blocked_observation(tm
     assert result.status == "blocked"
     assert result.project_id is not None
     assert "stale project revision" in result.message
+    assert result.response_verification.decision == "BLOCKED"
