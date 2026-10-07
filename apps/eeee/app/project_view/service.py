@@ -5,6 +5,7 @@ from contextlib import closing, contextmanager
 import json
 
 from app.contracts import EventEnvelope, ExecutionEnvelope
+from app.activity.store import ActivityLedger
 from app.harness.state import AgentTask, ProjectState
 from app.project_view.models import ProjectMapEdge, ProjectMapEvents, ProjectMapNode, ProjectMapSnapshot
 from app.runtime.store import StaleProjectRevision
@@ -27,8 +28,9 @@ _STATUSES = {
 
 
 class ProjectViewService:
-    def __init__(self, store: SQLiteStore) -> None:
+    def __init__(self, store: SQLiteStore, activity: ActivityLedger | None = None) -> None:
         self.store = store
+        self.activity = activity or ActivityLedger(store)
 
     @contextmanager
     def _read(self, project_id: str, revision: str | None):
@@ -85,6 +87,30 @@ class ProjectViewService:
                 current_commit=state.current_commit if state and state.project_revision == revision else None,
             )
             nodes = [root]
+            planning_sessions = [item for item in self.store.list_planning_sessions(project_id, revision)]
+            if planning_sessions:
+                session = planning_sessions[-1]
+                nodes.append(ProjectMapNode(
+                    id=f"planning:{session.session_id}", role="planning", group="planning",
+                    title="EEEE Planning Room", status=_status(session.status), project_revision=revision,
+                    revision_status="current", reason="Convert the user request into an approved execution handoff",
+                    selected_because="Every project must be planned before ISEOL execution",
+                ))
+                nodes.append(ProjectMapNode(
+                    id=f"qa:{project_id}", role="qa", group="quality", title="ISEOL QA",
+                    status="waiting", project_revision=revision, revision_status="current",
+                    reason="Independent verification follows implementation",
+                ))
+                nodes.append(ProjectMapNode(
+                    id=f"claimlatch:{project_id}", role="claimlatch", group="quality", title="ClaimLatch",
+                    status="waiting", project_revision=revision, revision_status="current",
+                    reason="Verify claims, evidence, hashes, and revision identity",
+                ))
+                nodes.append(ProjectMapNode(
+                    id=f"memory:{project_id}", role="memory", group="memory", title="Memory Promotion Gate",
+                    status="waiting", project_revision=revision, revision_status="current",
+                    reason="Promote only verified project outcomes and decisions",
+                ))
             linked = set()
             warnings = []
             for task in tasks:
@@ -132,12 +158,14 @@ class ProjectViewService:
                     troubleshooting_ids=_strings(output.get("troubleshootingIds")),
                 )
                 nodes.append(self._trust(connection, project_id, revision, node, execution))
+            activity_cursor = self.activity.list(project_id, revision, validate_revision=False).cursor
             edges = self._edges(root_id, tasks, nodes, warnings)
             nodes = self._depths(nodes, edges, warnings)
             return ProjectMapSnapshot(
                 project_id=project_id, project_revision=revision, title=project["name"],
                 nodes=nodes, edges=edges, current_node_ids=[node.id for node in nodes[1:] if node.status == "active"],
                 cursor=self._cursor(connection, project_id, revision), warnings=warnings,
+                activity_cursor=activity_cursor,
             )
 
     def get_events(self, project_id: str, *, cursor: int = 0, revision: str | None = None) -> ProjectMapEvents:
@@ -151,6 +179,13 @@ class ProjectViewService:
             )]
             return ProjectMapEvents(project_id=project_id, project_revision=revision,
                 cursor=max(cursor, self._cursor(connection, project_id, revision)), events=events)
+
+    def get_activity(self, project_id: str, *, cursor: int = 0, revision: str | None = None):
+        project = self.store.get_project(project_id)
+        current = revision or project.revision
+        if current != project.revision:
+            raise StaleProjectRevision(f"stale project revision for {project_id}: {current}")
+        return self.activity.list(project_id, current, cursor)
 
     @staticmethod
     def _cursor(connection, project_id, revision) -> int:
@@ -219,6 +254,10 @@ class ProjectViewService:
                     warnings.append(f"Task {task.id}: handoff target {next_task} unavailable")
         for node in nodes[1:]:
             if node.id.startswith("execution:"):
+                edges.add((root_id, node.id, "contains"))
+            elif node.id.startswith("planning:"):
+                edges.add((root_id, node.id, "contains"))
+            elif node.id.startswith(("qa:", "claimlatch:", "memory:")):
                 edges.add((root_id, node.id, "contains"))
         return [ProjectMapEdge(source=source, target=target, kind=kind) for source, target, kind in sorted(edges)]
 

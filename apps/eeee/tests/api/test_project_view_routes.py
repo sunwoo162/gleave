@@ -64,5 +64,11 @@ def test_project_creation_without_plugins_has_readable_map(client):
     assert result.status_code == 200
     assert result.json()["projectId"] == project_id
     assert result.json()["nodes"][0]["role"] == "coordinator"
+    node_ids = {node["id"] for node in result.json()["nodes"]}
+    assert any(node_id.startswith("planning:") for node_id in node_ids)
+    assert f"qa:{project_id}" in node_ids
+    activity = client.get(f"/api/projects/{project_id}/activity")
+    assert activity.status_code == 200
+    assert activity.json()["events"]
     # Provisioning completion is not project-work completion.
     assert result.json()["currentNodeIds"]

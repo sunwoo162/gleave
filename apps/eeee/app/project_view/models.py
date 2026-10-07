@@ -34,6 +34,11 @@ class ProjectMapNode(MapModel):
     troubleshooting_ids: list[str] = Field(default_factory=list, alias="troubleshootingIds")
     started_at: datetime | None = Field(default=None, alias="startedAt")
     completed_at: datetime | None = Field(default=None, alias="completedAt")
+    reason: str | None = None
+    alternatives: list[str] = Field(default_factory=list)
+    selected_because: str | None = Field(default=None, alias="selectedBecause")
+    activity_cursor: int | None = Field(default=None, alias="activityCursor")
+    trust_blockers: list[str] = Field(default_factory=list, alias="trustBlockers")
 
 
 class ProjectMapEdge(MapModel):
@@ -51,6 +56,8 @@ class ProjectMapSnapshot(MapModel):
     current_node_ids: list[str] = Field(alias="currentNodeIds")
     cursor: int = Field(ge=0)
     warnings: list[str] = Field(default_factory=list)
+    organization_version: int = Field(default=1, alias="organizationVersion")
+    activity_cursor: int = Field(default=0, alias="activityCursor")
 
 
 class ProjectMapEvents(MapModel):

@@ -36,8 +36,9 @@ class ActivityLedger:
             ).lastrowid
         return event.model_copy(update={"cursor": cursor})
 
-    def list(self, project_id: str, revision: str, cursor: int = 0) -> ActivityPage:
-        self.store._ensure_activity_revision(project_id, revision)
+    def list(self, project_id: str, revision: str, cursor: int = 0, *, validate_revision: bool = True) -> ActivityPage:
+        if validate_revision:
+            self.store._ensure_activity_revision(project_id, revision)
         with self.store._connect() as connection:
             rows = connection.execute(
                 "SELECT cursor, event_json FROM project_activity_events "

@@ -191,7 +191,7 @@ def create_app(
     application.state.kernel = kernel
     application.state.execution_store = kernel.executions
     application.state.event_bus = event_bus
-    project_view = ProjectViewService(store)
+    project_view = ProjectViewService(store, activity_ledger)
     application.state.project_view = project_view
     assistant_service = AssistantService(
         router=capability_router,

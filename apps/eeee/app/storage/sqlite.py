@@ -597,6 +597,14 @@ class SQLiteStore:
             raise KeyError(f"Planning session not found: {session_id}")
         return PlanningSession.model_validate_json(row["session_json"])
 
+    def list_planning_sessions(self, project_id: str, project_revision: str) -> list[PlanningSession]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT session_json FROM planning_sessions WHERE project_id = ? AND project_revision = ? "
+                "ORDER BY rowid", (project_id, project_revision),
+            ).fetchall()
+        return [PlanningSession.model_validate_json(row["session_json"]) for row in rows]
+
     def save_planning_artifact(self, artifact: PlanningArtifact) -> None:
         self._ensure_planning_revision(artifact.project_id, artifact.project_revision)
         with self._connect() as connection:
