@@ -16,6 +16,7 @@ from app.config import Settings
 from app.contracts import ExecutionEnvelope, ExecutionError, ExecutionStatus, SideEffectLevel
 from app.coordinator.service import Coordinator
 from app.integrations.contracts import ProjectOutcomeReportV1
+from app.memory.preferences import extract_preference
 from app.iseol.agents import AgentGraph
 from app.iseol.executor import AgentGraphExecutor
 from app.project_runtime.provisioner import ProjectProvisioner, is_todo_request
@@ -68,6 +69,38 @@ class LocalPlanningCapability:
             "message": f"Selected EEEE capability: {self.descriptor.id}",
             "plan": plan.model_dump(mode="json"),
             "context": envelope_context.assistant_context.model_dump(mode="json"),
+        })
+
+
+class UserPreferenceCapability:
+    """Persist only explicitly phrased user preferences."""
+
+    def __init__(self, descriptor: CapabilityDescriptor, coordinator: Coordinator) -> None:
+        self.descriptor = descriptor
+        self.coordinator = coordinator
+
+    def plan(self, request: AssistantRequest, context: AssistantContext) -> CapabilityPlan:
+        preference = extract_preference(request.raw_text)
+        if preference is None:
+            raise ValueError("명시적으로 기억할 선호를 말해줘.")
+        return CapabilityPlan(
+            capability_id=self.descriptor.id,
+            summary=f"Remember {preference.key}",
+            inputs={"key": preference.key, "value": preference.value},
+            side_effect_level=self.descriptor.side_effect_level,
+            requires_approval=False,
+        )
+
+    def execute(self, plan: CapabilityPlan, envelope_context: EnvelopeContext) -> CapabilityOutcome:
+        record = self.coordinator.remember_user_preference(
+            str(plan.inputs["key"]), str(plan.inputs["value"])
+        )
+        return CapabilityOutcome({
+            "status": "completed",
+            "message": "기억해둘게.",
+            "memoryId": record.id,
+            "preferenceKey": plan.inputs["key"],
+            "preferenceValue": plan.inputs["value"],
         })
 
 
@@ -143,7 +176,13 @@ class ProjectExecutionCapability:
                 qa_baseline_ids=list(dict.fromkeys([
                     *project_brief.qa_baseline_ids, *envelope_context.assistant_context.qa_baseline_ids,
                 ])),
-                memory_context=list(project_brief.preferences.get("verifiedMemories", [])),
+                memory_context=[
+                    *list(project_brief.preferences.get("verifiedMemories", [])),
+                    *[
+                        {"kind": "user_preference", "key": key, "content": value}
+                        for key, value in project_brief.preferences.get("userPreferences", {}).items()
+                    ],
+                ],
                 request_id=state.request_id,
                 planning_handoff=planning_handoff,
             )

@@ -67,6 +67,16 @@ def build_default_registry() -> CapabilityRegistry:
     registry = CapabilityRegistry()
     registry.register(
         _descriptor(
+            "user-preference",
+            "User Preference Memory",
+            ["preference", "memory", "personalization"],
+            ["기억해줘", "기억해", "앞으로는", "앞으로", "remember", "from now on"],
+            memory_writable=True,
+        ),
+        None,
+    )
+    registry.register(
+        _descriptor(
             "personal-secretary",
             "Personal Secretary",
             ["schedule", "reminder", "routine"],

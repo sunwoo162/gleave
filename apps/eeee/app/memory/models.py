@@ -14,6 +14,7 @@ MemoryKind = Literal[
     "regression_rule",
     "agent_routing_hint",
     "playbook",
+    "user_preference",
 ]
 PromotionState = Literal["candidate", "active", "superseded", "revoked"]
 

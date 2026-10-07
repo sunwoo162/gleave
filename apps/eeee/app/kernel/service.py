@@ -12,7 +12,7 @@ from app.assistant.router import CapabilityRouter
 from app.config import Settings
 from app.contracts import ApprovalState, EventEnvelope, ExecutionEnvelope, ExecutionError, ExecutionStatus, LocalEventBus, SideEffectLevel
 from app.coordinator.service import Coordinator
-from app.kernel.capabilities import CapabilityOutcome, EnvelopeContext, LocalPlanningCapability, ProjectExecutionCapability
+from app.kernel.capabilities import CapabilityOutcome, EnvelopeContext, LocalPlanningCapability, ProjectExecutionCapability, UserPreferenceCapability
 from app.memory.store import MemoryStore
 from app.project_runtime.provisioner import ProjectProvisioner
 from app.planning.service import PlanningService
@@ -52,6 +52,8 @@ class KernelService:
                     planning_service=planning_service,
                     agent_runtime=agent_runtime,
                 )
+            elif descriptor.id == "user-preference":
+                handler = UserPreferenceCapability(descriptor, coordinator)
             elif descriptor.id in {"personal-secretary", "knowledge-documents", "presence"}:
                 handler = LocalPlanningCapability(descriptor)
             else:
@@ -263,11 +265,15 @@ class KernelService:
 
     def _retrieve_context(self, request: AssistantRequest, supplied: AssistantContext) -> AssistantContext:
         memories = self.memory.search(request.raw_text)
+        persistent_preferences = {
+            key: record.content
+            for key, record in self.memory.search_user_preferences().items()
+        }
         return AssistantContext(
             memory_ids=list(dict.fromkeys([*supplied.memory_ids, *(item.id for item in memories)])),
             qa_baseline_ids=list(dict.fromkeys([
                 *supplied.qa_baseline_ids, *(item.id for item in memories if item.kind in {"qa_rule", "regression_rule"}),
-            ])), user_preferences=dict(supplied.user_preferences),
+            ])), user_preferences={**persistent_preferences, **supplied.user_preferences},
         )
 
     def _context_identity_error(self, request: AssistantRequest) -> str | None:

@@ -126,6 +126,12 @@ class MemoryRevokePayload(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class UserPreferencePayload(BaseModel):
+    key: str = Field(min_length=1, max_length=120)
+    value: str = Field(min_length=1, max_length=2_000)
+    scope: dict[str, object] = Field(default_factory=dict)
+
+
 class DesignReferencePayload(BaseModel):
     urls: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
@@ -647,6 +653,15 @@ def build_api_router(
             if value is not None
         }
         return flow.coordinator.memory.search(query, scope=scope or None, limit=limit)
+
+    @router.post("/memory/user-preference", response_model=MemoryRecord)
+    def save_user_preference(payload: UserPreferencePayload) -> MemoryRecord:
+        try:
+            return flow.coordinator.remember_user_preference(
+                payload.key, payload.value, scope=payload.scope
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/memory/{memory_id}/promote", response_model=MemoryRecord)
     def promote_memory(

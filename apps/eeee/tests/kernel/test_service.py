@@ -108,6 +108,17 @@ def test_non_project_and_explicit_capability_requests_do_not_allocate_project(tm
         assert connection.execute("SELECT COUNT(*) FROM execution_envelopes").fetchone()[0] == 2
 
 
+def test_explicit_user_preference_is_saved_and_reused_on_next_request(tmp_path):
+    kernel, store, _ = make_kernel(tmp_path)
+
+    remembered = kernel.route(AssistantRequest(raw_text="앞으로 한국어로 답해줘"), AssistantContext())
+    next_request = kernel.route(AssistantRequest(raw_text="내일 회의 일정 알려줘"), AssistantContext())
+
+    assert remembered.capability_id == "user-preference"
+    assert remembered.output["status"] == "completed"
+    assert next_request.output["context"]["user_preferences"]["language"] == "한국어"
+
+
 def test_ambiguous_request_is_auditable_and_requires_clarification(tmp_path):
     kernel, store, _ = make_kernel(tmp_path)
     result = kernel.route(AssistantRequest(raw_text="이거 해줘"), AssistantContext())

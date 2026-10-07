@@ -51,6 +51,7 @@ def test_default_registry_contains_the_initial_eeee_capabilities() -> None:
         "project-execution",
         "knowledge-documents",
         "presence",
+        "user-preference",
     }
 
 

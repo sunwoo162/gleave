@@ -142,6 +142,11 @@ class Coordinator:
                 raise ApprovalError(f"ClaimLatch blocked memory promotion: {trust.reason}")
         return self.memory.promote(memory_id, actor=actor, evidence_ids=evidence_ids)
 
+    def remember_user_preference(
+        self, key: str, value: str, *, scope: dict[str, object] | None = None
+    ) -> MemoryRecord:
+        return self.memory.save_user_preference(key, value, scope=scope)
+
     def build_project_brief(self, project_id: str, request_id: str) -> ProjectBriefV1:
         """Retrieve verified memory before ISEOL decomposes the next project."""
 
@@ -165,6 +170,10 @@ class Coordinator:
             }
             for memory in memories
         ]
+        user_preferences = {
+            key: record.content
+            for key, record in self.memory.search_user_preferences().items()
+        }
         return ProjectBriefV1(
             schema_version=1,
             project_id=project.id,
@@ -175,6 +184,7 @@ class Coordinator:
             preferences={
                 "canonicalIntent": request.canonical_intent,
                 "verifiedMemories": verified_memories,
+                "userPreferences": user_preferences,
             },
             schedule={},
             retrieved_memory_ids=memory_ids,

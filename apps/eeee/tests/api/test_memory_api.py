@@ -59,3 +59,18 @@ def test_memory_api_rejects_unverified_outcome_before_memory_promotion(tmp_path)
     assert outcome_response.status_code == 409
     assert "ClaimLatch" in outcome_response.json()["detail"]
     assert client.get("/api/memory", params={"query": "smoke"}).json() == []
+
+
+def test_memory_api_persists_explicit_user_preference(tmp_path) -> None:
+    settings = Settings(data_dir=tmp_path / "data", workspace_root=tmp_path / "workspace")
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/memory/user-preference",
+            json={"key": "language", "value": "한국어", "scope": {"surface": "all"}},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["kind"] == "user_preference"
+        assert payload["status"] == "active"
+        assert client.get("/api/memory", params={"query": "한국어"}).json()[0]["content"] == "한국어"
