@@ -2,6 +2,7 @@ import json
 import socket
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 from app.project_runtime.web_scaffold import create_web_app_scaffold
 from app.project_runtime.web_runner import WebProjectRunner
@@ -18,7 +19,8 @@ def _request(url, method="GET", payload=None):
     request = urllib.request.Request(url, data=body, method=method, headers={"content-type": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
-            return response.status, json.loads(response.read())
+            body = response.read()
+            return response.status, (json.loads(body) if body else None)
     except urllib.error.HTTPError as error:
         return error.code, json.loads(error.read())
 
@@ -103,3 +105,35 @@ def test_web_runner_checks_frontend_contract_and_database_survives_restart(tmp_p
     assert "syntax:apps/web/src/app/main.js" in names
     assert "responsive:viewport" in names
     assert "responsive:media-query" in names
+    assert "product-baseline:todo-workflow" in names
+
+
+def test_web_runner_supports_product_baseline_todo_workflow(tmp_path):
+    root = tmp_path / "web-project"
+    create_web_app_scaffold(root, "Todo Web")
+    runner = WebProjectRunner()
+    runtime = runner.start(root, port=_port())
+
+    try:
+        _request(runtime.url + "/api/session", "POST", {"mode": "demo"})
+        created = _request(
+            runtime.url + "/api/todos",
+            "POST",
+            {"title": "포트폴리오 정리", "priority": "high", "dueDate": "2030-01-01", "tags": ["portfolio"]},
+        )
+        todo_id = created[1]["id"]
+        assert created[0] == 201
+        assert created[1]["dueDate"] == "2030-01-01"
+        assert created[1]["tags"] == ["portfolio"]
+
+        status, filtered = _request(runtime.url + "/api/todos?search=" + quote("포트폴리오") + "&status=active")
+        assert status == 200 and filtered[0]["id"] == todo_id
+        status, stats = _request(runtime.url + "/api/todos/stats")
+        assert status == 200 and stats["total"] == 1 and stats["active"] == 1
+
+        updated = _request(runtime.url + f"/api/todos/{todo_id}", "PATCH", {"title": "완료된 포트폴리오", "completed": True})
+        assert updated[0] == 200 and updated[1]["completed"] is True
+        assert _request(runtime.url + f"/api/todos/{todo_id}", "DELETE")[0] == 204
+        assert _request(runtime.url + "/api/todos")[1] == []
+    finally:
+        runner.stop(runtime)

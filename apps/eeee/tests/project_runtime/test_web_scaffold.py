@@ -59,3 +59,18 @@ def test_web_app_scaffold_keeps_local_runtime_state_out_of_source_control(tmp_pa
     assert "data/" in gitignore
     assert ".env" in gitignore
     assert "__pycache__/" in gitignore
+
+
+def test_web_app_scaffold_contains_product_baseline_features(tmp_path):
+    root = tmp_path / "web-project"
+    create_web_app_scaffold(root, "Todo Web")
+
+    page = (root / "apps/web/src/pages/home/ui.js").read_text(encoding="utf-8")
+    api = (root / "apps/api/server.py").read_text(encoding="utf-8")
+    store = (root / "apps/api/store.py").read_text(encoding="utf-8")
+
+    for feature in ("검색", "필터", "수정", "삭제", "진행률", "마감일"):
+        assert feature in page
+    assert "/api/todos/stats" in api
+    assert "def delete" in store
+    assert "due_date" in store

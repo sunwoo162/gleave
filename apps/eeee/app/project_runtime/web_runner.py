@@ -95,6 +95,13 @@ class WebProjectRunner:
         checks.append(self._check("syntax:apps/api/server.py", syntax.returncode == 0, api, syntax.stderr.strip()))
         checks.append(self._check("auth:production-config-gated", "awaiting_configuration" in self._read(api), api))
         checks.append(self._check("deployment:truthful-handoff", "ClaimLatch" in self._read(root / "DEPLOYMENT.md"), root / "DEPLOYMENT.md"))
+        store = root / "apps/api/store.py"
+        page = root / "apps/web/src/pages/home/ui.js"
+        checks.append(self._check(
+            "product-baseline:todo-workflow",
+            all(token in self._read(path) for path, token in ((api, "/api/todos/stats"), (store, "def delete"), (store, "due_date"), (page, "진행률"), (page, "삭제"))),
+            page,
+        ))
         index = root / "apps/web/index.html"
         styles = root / "apps/web/src/shared/ui/styles.css"
         checks.append(self._check(
