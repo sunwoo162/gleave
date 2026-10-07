@@ -25,8 +25,8 @@ def test_project_request_survives_app_restart_with_truthful_connector_states(tmp
         project_id = payload["project_id"]
         profile = payload["project_profile"]
         assert payload["selection"]["capability_id"] == "project-execution"
-        assert payload["planningSessionId"]
-        assert payload["planningHandoffId"]
+        assert payload["planningSessionId"], payload
+        assert payload["planningHandoffId"], payload
         execution_plan = Path(payload["executionPlanPath"])
         assert execution_plan.is_file()
         assert json.loads(execution_plan.read_text(encoding="utf-8"))["planningHandoff"]["approval"]["status"] == "approved"

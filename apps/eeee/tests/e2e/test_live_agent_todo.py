@@ -60,6 +60,7 @@ def test_user_todo_request_executes_specialist_graph_and_renders_it(tmp_path):
         assert response.status_code == 200, response.text
         payload = response.json()
         project_id = payload["project_id"]
+        assert payload["project_profile"], payload
         workspace = Path(payload["project_profile"]["workspace"])
         assert (workspace / "src" / "entities" / "todo" / "model.js").is_file()
 

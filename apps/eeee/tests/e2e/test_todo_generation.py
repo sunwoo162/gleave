@@ -14,6 +14,7 @@ def test_user_can_request_todo_and_receive_a_generated_project(tmp_path) -> None
 
         assert response.status_code == 200, response.text
     payload = response.json()
+    assert payload["project_profile"], payload
     workspace = Path(payload["project_profile"]["workspace"])
     assert payload["selection"]["capability_id"] == "project-execution"
     assert payload["status"] == "completed"
