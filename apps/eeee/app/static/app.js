@@ -360,6 +360,11 @@ function renderProjectMap(snapshot) {
   projectMapCursor = snapshot.cursor || 0;
   const container = $("#project-map-nodes");
   const active = new Set(snapshot.currentNodeIds || []);
+  const incoming = new Map();
+  (snapshot.edges || []).forEach((edge) => {
+    if (!incoming.has(edge.target)) incoming.set(edge.target, []);
+    incoming.get(edge.target).push(edge);
+  });
   container.replaceChildren();
   (snapshot.nodes || []).forEach((node) => {
     const card = document.createElement("button");
@@ -367,10 +372,15 @@ function renderProjectMap(snapshot) {
     card.className = `project-map-node ${node.status}${active.has(node.id) ? " active" : ""}`;
     card.dataset.group = node.group || "execution";
     card.dataset.nodeId = node.id;
+    card.dataset.claimlatch = node.claimLatchStatus || "unavailable";
+    card.dataset.qa = node.qaStatus || "unavailable";
     const heading = document.createElement("strong");
     heading.textContent = node.title;
     const meta = document.createElement("span");
-    meta.textContent = `${node.role} · ${node.status}`;
+    const parents = (incoming.get(node.id) || [])
+      .filter((edge) => edge.kind === "dependency")
+      .map((edge) => edge.source.replace(/^agent:/, ""));
+    meta.textContent = `${node.role} · ${node.status}${parents.length ? ` · ← ${parents.join(", ")}` : ""}`;
     card.append(heading, meta);
     card.addEventListener("click", () => renderProjectMapDetails(node));
     container.append(card);

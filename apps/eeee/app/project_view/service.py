@@ -111,6 +111,32 @@ class ProjectViewService:
                     status="waiting", project_revision=revision, revision_status="current",
                     reason="Promote only verified project outcomes and decisions",
                 ))
+            agent_graph, agent_report = self._agent_graph(executions)
+            if agent_graph:
+                report_by_id = {
+                    item.get("agentId"): item
+                    for item in agent_report.get("agents", [])
+                    if isinstance(item, Mapping) and isinstance(item.get("agentId"), str)
+                }
+                for agent in agent_graph.get("agents", []):
+                    if not isinstance(agent, Mapping) or not isinstance(agent.get("id"), str):
+                        continue
+                    agent_id = agent["id"]
+                    record = report_by_id.get(agent_id, {})
+                    claim = str(record.get("claimLatchDecision", "unavailable"))
+                    nodes.append(ProjectMapNode(
+                        id=f"agent:{agent_id}", role=str(agent.get("role", agent_id)), group="implementation",
+                        title=str(agent.get("title", agent_id)), status=_agent_status(record.get("status")),
+                        progress=100 if record.get("status") == "passed" else None,
+                        project_revision=revision, revision_status="current",
+                        execution_id=_string(record.get("executionId")),
+                        changed_files=_strings(record.get("changedFiles")),
+                        claim_latch_status={"BLOCKED": "BLOCK", "PASS": "PASS", "WARN": "WARN"}.get(claim, "unavailable"),
+                        evidence_ids=_strings(record.get("evidenceIds")),
+                        reason=_string(record.get("reason")) or str(agent.get("goal", "")),
+                        selected_because="Dependencies and handoff gates determine when this specialist may run",
+                        started_at=record.get("startedAt"), completed_at=record.get("completedAt"),
+                    ))
             linked = set()
             warnings = []
             for task in tasks:
@@ -160,6 +186,8 @@ class ProjectViewService:
                 nodes.append(self._trust(connection, project_id, revision, node, execution))
             activity_cursor = self.activity.list(project_id, revision, validate_revision=False).cursor
             edges = self._edges(root_id, tasks, nodes, warnings)
+            edges.extend(self._agent_edges(agent_graph, nodes, root_id, warnings))
+            edges = _unique_edges(edges)
             nodes = self._depths(nodes, edges, warnings)
             return ProjectMapSnapshot(
                 project_id=project_id, project_revision=revision, title=project["name"],
@@ -167,6 +195,16 @@ class ProjectViewService:
                 cursor=self._cursor(connection, project_id, revision), warnings=warnings,
                 activity_cursor=activity_cursor,
             )
+
+    @staticmethod
+    def _agent_graph(executions):
+        for execution in reversed(list(executions.values())):
+            output = execution.output or {}
+            graph = output.get("agentGraph")
+            report = output.get("agentExecutionReport")
+            if isinstance(graph, Mapping) and isinstance(graph.get("agents"), (list, tuple)):
+                return graph, report if isinstance(report, Mapping) else {}
+        return {}, {}
 
     def get_events(self, project_id: str, *, cursor: int = 0, revision: str | None = None) -> ProjectMapEvents:
         if cursor < 0:
@@ -262,6 +300,26 @@ class ProjectViewService:
         return [ProjectMapEdge(source=source, target=target, kind=kind) for source, target, kind in sorted(edges)]
 
     @staticmethod
+    def _agent_edges(agent_graph, nodes, root_id, warnings):
+        if not agent_graph:
+            return []
+        identifiers = {node.id for node in nodes}
+        edges = []
+        for agent in agent_graph.get("agents", []):
+            if not isinstance(agent, Mapping) or not isinstance(agent.get("id"), str):
+                continue
+            target = f"agent:{agent['id']}"
+            if target in identifiers:
+                edges.append(ProjectMapEdge(source=root_id, target=target, kind="contains"))
+            for dependency in agent.get("dependencies", []):
+                source = f"agent:{dependency}"
+                if source in identifiers and target in identifiers:
+                    edges.append(ProjectMapEdge(source=source, target=target, kind="dependency"))
+                else:
+                    warnings.append(f"Agent {agent['id']}: dependency {dependency} unavailable")
+        return edges
+
+    @staticmethod
     def _depths(nodes, edges, warnings):
         # Topological depth includes hierarchy, dependencies and handoffs.
         # Cycles remain visible, but are reported rather than recursed forever.
@@ -286,6 +344,13 @@ def _status(value):
     return _STATUSES.get(value, "unavailable")
 
 
+def _agent_status(value):
+    return {
+        "passed": "completed", "completed": "completed", "running": "active",
+        "ready": "waiting", "pending": "waiting", "blocked": "blocked", "failed": "failed",
+    }.get(value, "waiting")
+
+
 def _qa_status(status, checks):
     if not isinstance(checks, list):
         return "unavailable"
@@ -308,3 +373,14 @@ def _strings(value):
 
 def _unique(values):
     return list(dict.fromkeys(values))
+
+
+def _unique_edges(edges):
+    seen = set()
+    result = []
+    for edge in edges:
+        key = (edge.source, edge.target, edge.kind)
+        if key not in seen:
+            seen.add(key)
+            result.append(edge)
+    return result
