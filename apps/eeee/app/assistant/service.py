@@ -81,7 +81,19 @@ class AssistantService:
         output = envelope.model_dump(mode="json")["output"] or {}
         quality_status = output.get("qualityStatus")
         completed_locally = quality_status == "PASS"
-        status = "completed" if completed_locally else output.get("status", "blocked")
+        missing_connectors = output.get("missingConnectors", [])
+        project_profile = output.get("projectProfile") or {}
+        requires_external_configuration = (
+            isinstance(project_profile, dict)
+            and project_profile.get("runtimeProfile") == "web_app"
+        )
+        status = (
+            "awaiting_configuration"
+            if completed_locally and missing_connectors and requires_external_configuration
+            else "completed"
+            if completed_locally
+            else output.get("status", "blocked")
+        )
         message = output.get("message", "요청을 완료하지 못했어.")
         if completed_locally:
             message = "로컬 프로젝트가 생성되고 QA/ClaimLatch 검증을 통과했어. 외부 플러그인은 선택적으로 연결할 수 있어."
@@ -91,7 +103,7 @@ class AssistantService:
             message=message,
             project_id=output.get("projectId"),
             project_profile=output.get("projectProfile"),
-            missing_connectors=output.get("missingConnectors", []),
+            missing_connectors=missing_connectors,
             execution_plan_path=output.get("executionPlanPath"),
             planning_session_id=output.get("planningSessionId"),
             planning_handoff_id=output.get("planningHandoffId"),
