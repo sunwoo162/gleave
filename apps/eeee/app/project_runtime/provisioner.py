@@ -8,6 +8,7 @@ from app.project_runtime.connectors import ProjectConnector, build_default_conne
 from app.project_runtime.models import ProjectProfile, ProjectProvisioningResult
 from app.project_runtime.scaffold import create_todo_scaffold
 from app.project_runtime.iseol_bridge import IseolPlanBridge
+from app.project_runtime.todo_runner import TodoProjectRunner
 import json
 from app.storage.sqlite import SQLiteStore
 
@@ -20,10 +21,12 @@ class ProjectProvisioner:
         store: SQLiteStore,
         connectors: Mapping[str, ProjectConnector] | None = None,
         iseol_bridge: IseolPlanBridge | None = None,
+        todo_runner: TodoProjectRunner | None = None,
     ) -> None:
         self.store = store
         self.connectors = dict(connectors or build_default_connectors())
         self.iseol_bridge = iseol_bridge
+        self.todo_runner = todo_runner or TodoProjectRunner()
 
     def provision(
         self,
@@ -122,4 +125,8 @@ def _result(profile: ProjectProfile, *, execution_plan_path: str | None = None) 
 def _is_todo_request(goal: str, scope: list[str]) -> bool:
     text = " ".join([goal, *scope]).lower()
     return "todo" in text or "할 일" in text or "체크리스트" in text
+
+
+def is_todo_request(goal: str, scope: list[str]) -> bool:
+    return _is_todo_request(goal, scope)
 

@@ -77,6 +77,8 @@ class ProjectProvisioningResult(BaseModel):
     profile: ProjectProfile
     missing_connectors: list[str] = Field(default_factory=list)
     execution_plan_path: str | None = Field(default=None, alias="executionPlanPath")
+    qa_report_path: str | None = Field(default=None, alias="qaReportPath")
+    release_manifest_path: str | None = Field(default=None, alias="releaseManifestPath")
 
     @property
     def status(self) -> ProvisioningStatus:

@@ -1,5 +1,6 @@
 import sqlite3
 from contextlib import contextmanager
+from pathlib import Path
 
 from app.assistant.models import AssistantContext, AssistantRequest, CapabilityDescriptor
 from app.assistant.registry import build_default_registry
@@ -59,6 +60,18 @@ def test_project_request_persists_parent_and_fixed_project_child_with_lifecycle(
     assert [event.event_type for event in child_events if event.event_type.startswith("execution.")] == [
         "execution.queued", "execution.running", "execution.completed"
     ]
+
+
+def test_todo_request_runs_local_qa_and_exposes_claimlatch_release_block(tmp_path):
+    kernel, store, _ = make_kernel(tmp_path)
+
+    result = kernel.route(AssistantRequest(raw_text="Todo 앱 만들어줘"), AssistantContext())
+    workspace = store.get_project(result.output["projectId"]).workspace
+
+    assert result.output["qualityStatus"] == "BLOCKED"
+    assert result.output["qaReportPath"]
+    assert result.output["releaseManifestPath"] is None
+    assert Path(workspace, "QA_REPORT.json").is_file()
 
 
 def test_routing_record_exists_before_project_allocation(tmp_path):

@@ -12,7 +12,7 @@ from app.assistant.models import AssistantContext, AssistantRequest, CapabilityD
 from app.config import Settings
 from app.contracts import ExecutionEnvelope, ExecutionError, ExecutionStatus, SideEffectLevel
 from app.coordinator.service import Coordinator
-from app.project_runtime.provisioner import ProjectProvisioner
+from app.project_runtime.provisioner import ProjectProvisioner, is_todo_request
 from app.runtime.store import StaleProjectRevision
 from app.storage.sqlite import SQLiteStore
 from app.workflow.planner import parse_request
@@ -126,6 +126,30 @@ class ProjectExecutionCapability:
                 ])),
                 request_id=state.request_id,
             )
+            todo_run = None
+            if is_todo_request(brief.goal, [brief.target_type, *brief.acceptance_criteria]):
+                prepared = self.provisioner.todo_runner.prepare(
+                    project_id=project.id,
+                    project_revision=project.revision,
+                    workspace=project.workspace,
+                )
+                trust = (
+                    self.coordinator.trust_pipeline.release_gate(_child, prepared.qa_report)
+                    if self.coordinator.trust_pipeline is not None
+                    else None
+                )
+                claim_latch = {
+                    "decision": trust.decision if trust is not None else "BLOCKED",
+                    "receiptId": trust.claim_latch_receipt_id if trust is not None else None,
+                    "claimLatchReportId": trust.claim_latch_report_id if trust is not None else None,
+                }
+                todo_run = self.provisioner.todo_runner.finalize(
+                    project_id=project.id,
+                    project_revision=project.revision,
+                    workspace=project.workspace,
+                    prepared=prepared,
+                    claim_latch=claim_latch,
+                )
             document_execution_id = None
             if self.document_service is not None:
                 def sync_document(_document: ExecutionEnvelope) -> CapabilityOutcome:
@@ -156,7 +180,11 @@ class ProjectExecutionCapability:
                 "projectId": project.id, "projectProfile": profile.model_dump(mode="json", by_alias=True),
                 "missingConnectors": missing, "documentExecutionId": document_execution_id,
                 "executionPlanPath": provisioned.execution_plan_path,
-            })
+                "qaReportPath": todo_run.qa_report_path if todo_run is not None else None,
+                "releaseManifestPath": todo_run.release_manifest_path if todo_run is not None else None,
+                "qualityStatus": todo_run.status if todo_run is not None else None,
+                "qualityReason": todo_run.reason if todo_run is not None else None,
+            }, ExecutionStatus.COMPLETED)
 
         try:
             child = envelope_context.run_child(
