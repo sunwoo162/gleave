@@ -343,6 +343,7 @@ function renderProjectMapDetails(node) {
     ["변경 파일", (node.changedFiles || []).join(", ") || "기록 없음"],
     ["ClaimLatch", node.claimLatchStatus || "unavailable"],
     ["QA", node.qaStatus || "unavailable"],
+    ["차단 사유", (node.trustBlockers || []).join(", ") || "없음"],
     ["증거", (node.evidenceIds || []).join(", ") || "기록 없음"],
     ["트러블슈팅", (node.troubleshootingIds || []).join(", ") || "기록 없음"],
   ];

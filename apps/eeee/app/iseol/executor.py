@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agent.protocol import AgentRequest, AgentRuntime
 from app.contracts import ExecutionEnvelope
 from app.iseol.agents import AgentGraph, AgentNode
+from app.iseol.evaluator import AcceptanceEvaluator
 from app.trust.pipeline import TrustPipeline
 
 
@@ -36,6 +37,8 @@ class AgentExecutionRecord(BaseModel):
     completed_at: datetime = Field(alias="completedAt")
     attempt: int = Field(default=1, ge=1)
     reflection: str | None = None
+    acceptance_decision: str = Field(default="NOT_RUN", alias="acceptanceDecision")
+    acceptance_gaps: list[str] = Field(default_factory=list, alias="acceptanceGaps")
 
 
 class ReflectionDecision(BaseModel):
@@ -73,6 +76,7 @@ class AgentGraphExecutor:
         max_parallelism: int = 3,
         reflector: Callable[[AgentNode, AgentExecutionRecord], ReflectionDecision] | None = None,
         max_retries: int = 1,
+        acceptance_evaluator: AcceptanceEvaluator | None = None,
     ) -> None:
         self.runtime = runtime
         self.trust_pipeline = trust_pipeline
@@ -84,6 +88,7 @@ class AgentGraphExecutor:
         if max_retries < 0:
             raise ValueError("max_retries must be nonnegative")
         self.max_retries = max_retries
+        self.acceptance_evaluator = acceptance_evaluator or AcceptanceEvaluator()
 
     def execute(self, graph: AgentGraph, envelope: ExecutionEnvelope) -> AgentExecutionReport:
         records: dict[str, AgentExecutionRecord] = {}
@@ -186,6 +191,16 @@ class AgentGraphExecutor:
                 reason=result.error or "Agent runtime did not complete",
                 startedAt=started, completedAt=datetime.now(timezone.utc), attempt=attempt,
             )
+        acceptance = self.acceptance_evaluator.evaluate(node, result, evidence_ids=evidence_ids)
+        if acceptance.decision != "PASS":
+            return AgentExecutionRecord(
+                agentId=node.id, taskId=node.task_id, role=node.role, status="blocked",
+                summary=result.summary, changedFiles=list(result.changed_files),
+                evidenceIds=evidence_ids, claimLatchDecision="NOT_RUN",
+                reason=acceptance.reason, acceptanceDecision=acceptance.decision,
+                acceptanceGaps=acceptance.gaps,
+                startedAt=started, completedAt=datetime.now(timezone.utc), attempt=attempt,
+            )
         child = envelope.model_copy(update={
             "execution_id": f"{envelope.execution_id}:{node.id}",
             "capability_id": f"iseol.agent.{node.id}",
@@ -202,6 +217,7 @@ class AgentGraphExecutor:
             evidenceIds=evidence_ids, claimLatchDecision=trust.decision,
             reason=trust.reason, startedAt=started, completedAt=datetime.now(timezone.utc),
             attempt=attempt,
+            acceptanceDecision=acceptance.decision,
         )
 
     @staticmethod

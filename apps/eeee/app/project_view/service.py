@@ -135,6 +135,7 @@ class ProjectViewService:
                         evidence_ids=_strings(record.get("evidenceIds")),
                         reason=_string(record.get("reason")) or str(agent.get("goal", "")),
                         selected_because="Dependencies and handoff gates determine when this specialist may run",
+                        trust_blockers=_strings(record.get("acceptanceGaps")),
                         started_at=record.get("startedAt"), completed_at=record.get("completedAt"),
                     ))
             linked = set()
