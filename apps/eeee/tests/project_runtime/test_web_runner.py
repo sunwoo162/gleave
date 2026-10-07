@@ -71,3 +71,32 @@ def test_web_runner_writes_qa_and_release_manifest_only_after_claimlatch_pass(tm
     assert (root / "QA_REPORT.json").is_file()
     assert (root / "RELEASE_MANIFEST.json").is_file()
     assert result.git_commit and len(result.git_commit) == 40
+
+
+def test_web_runner_checks_frontend_contract_and_database_survives_restart(tmp_path):
+    root = tmp_path / "web-project"
+    create_web_app_scaffold(root, "Todo Web")
+    runner = WebProjectRunner()
+    runtime = runner.start(root, port=_port())
+
+    try:
+        _request(runtime.url + "/api/session", "POST", {"mode": "demo"})
+        created = _request(runtime.url + "/api/todos", "POST", {"title": "persist me"})
+        assert created[0] == 201
+    finally:
+        runner.stop(runtime)
+
+    restarted = runner.start(root, port=_port())
+    try:
+        _request(restarted.url + "/api/session", "POST", {"mode": "demo"})
+        status, todos = _request(restarted.url + "/api/todos")
+        assert status == 200
+        assert any(todo["title"] == "persist me" for todo in todos)
+    finally:
+        runner.stop(restarted)
+
+    prepared = runner.prepare(project_id="project-web", project_revision="rev-1", workspace=root)
+    names = {check["name"] for check in prepared.qa_report["checks"]}
+    assert "syntax:apps/web/src/app/main.js" in names
+    assert "responsive:viewport" in names
+    assert "responsive:media-query" in names

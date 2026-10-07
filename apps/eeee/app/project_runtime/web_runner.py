@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import time
+import shutil
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -75,7 +76,9 @@ class WebProjectRunner:
         root = Path(workspace).resolve()
         checks = []
         for relative in (
-            "apps/web/index.html", "apps/web/src/app/main.js", "apps/api/server.py",
+            "apps/web/index.html", "apps/web/src/app/main.js", "apps/web/src/entities/todo/model.js",
+            "apps/web/src/shared/lib/api.js", "apps/web/src/pages/home/ui.js",
+            "apps/web/src/shared/ui/styles.css", "apps/api/server.py",
             "apps/api/store.py", "packages/auth/README.md", "packages/db/README.md",
             ".env.example", "DEPLOYMENT.md",
         ):
@@ -92,6 +95,27 @@ class WebProjectRunner:
         checks.append(self._check("syntax:apps/api/server.py", syntax.returncode == 0, api, syntax.stderr.strip()))
         checks.append(self._check("auth:production-config-gated", "awaiting_configuration" in self._read(api), api))
         checks.append(self._check("deployment:truthful-handoff", "ClaimLatch" in self._read(root / "DEPLOYMENT.md"), root / "DEPLOYMENT.md"))
+        index = root / "apps/web/index.html"
+        styles = root / "apps/web/src/shared/ui/styles.css"
+        checks.append(self._check(
+            "responsive:viewport",
+            'name="viewport"' in self._read(index).lower(),
+            index,
+        ))
+        checks.append(self._check("responsive:media-query", "@media" in self._read(styles), styles))
+        node = shutil.which("node")
+        for relative in (
+            "apps/web/src/app/main.js",
+            "apps/web/src/entities/todo/model.js",
+            "apps/web/src/shared/lib/api.js",
+            "apps/web/src/pages/home/ui.js",
+        ):
+            path = root / relative
+            if node is None:
+                checks.append(self._check("syntax:" + relative, False, path, "node is required for frontend syntax verification"))
+                continue
+            syntax = subprocess.run([node, "--check", str(path)], capture_output=True, text=True, check=False)
+            checks.append(self._check("syntax:" + relative, syntax.returncode == 0, path, syntax.stderr.strip()))
         try:
             runtime = self.start(root, port=self._free_port())
             try:

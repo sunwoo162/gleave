@@ -7,8 +7,9 @@ EEEE는 사용자가 `로그인 기능이 있는 Todo 웹앱 만들어줘`처럼
 1. 요청을 `runtimeProfile=web_app`으로 분류한다.
 2. EEEE가 프론트엔드, API, 저장소, 인증 계약, 로컬 실행 문서를 함께 생성한다.
 3. 생성된 API를 실제 프로세스로 실행하고 health/session/Todo 흐름을 확인한다.
-4. ClaimLatch가 파일 존재, UTF-8, Python 컴파일, 실행 응답, 프로젝트 revision, QA 보고서와 release manifest의 일치를 검증한다.
-5. 로컬 QA가 PASS여도 외부 OAuth·DB·호스팅 credential이 없으면 상태는 `awaiting_configuration`으로 유지한다.
+4. 재시작 후 SQLite 데이터가 남는지 확인하고, 프론트엔드 JavaScript 구문·viewport 메타데이터·반응형 media query를 확인한다.
+5. ClaimLatch가 파일 존재, UTF-8, Python/JavaScript 컴파일, 실행 응답, 프로젝트 revision, QA 보고서와 release manifest의 일치를 검증한다.
+6. 로컬 QA가 PASS여도 외부 OAuth·DB·호스팅 credential이 없으면 상태는 `awaiting_configuration`으로 유지한다.
 
 ## 사용자에게 보이는 상태
 
