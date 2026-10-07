@@ -96,7 +96,20 @@ class IseolPlanBridge:
 
     @staticmethod
     def _run(command: list[str], payload: str, timeout: float) -> str:
-        result = subprocess.run(command, input=payload, text=True, capture_output=True, timeout=timeout, check=False)
+        # Windows runners may use a legacy locale (for example ``cp1252``)
+        # even though the project brief is UTF-8 Korean JSON.  Pin both
+        # stdin and stdout decoding so natural-language requests cross the
+        # ISEOL process boundary losslessly on every host.
+        result = subprocess.run(
+            command,
+            input=payload,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
         if result.returncode != 0:
             raise subprocess.CalledProcessError(result.returncode, command, result.stdout, result.stderr)
         return result.stdout

@@ -1,5 +1,6 @@
 import json
 
+import app.project_runtime.iseol_bridge as bridge_module
 from app.domain.models import RequestBrief
 from app.project_runtime.iseol_bridge import IseolPlanBridge
 
@@ -61,3 +62,24 @@ def test_bridge_rejects_invalid_iseol_output() -> None:
         assert "invalid ISEOL plan" in str(error)
     else:
         raise AssertionError("invalid ISEOL output must be rejected")
+
+
+def test_bridge_process_boundary_is_utf8(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class Completed:
+        returncode = 0
+        stdout = '{"schemaVersion": 1, "projectId": "project-1", "tasks": []}'
+        stderr = ""
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return Completed()
+
+    monkeypatch.setattr(bridge_module.subprocess, "run", fake_run)
+    output = IseolPlanBridge._run(["node", "plan-cli.js"], "Todo 앱 만들어줘", 3.0)
+
+    assert "앱" in captured["input"]
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "strict"
+    assert json.loads(output)["projectId"] == "project-1"
