@@ -8,6 +8,7 @@ from app.project_runtime.connectors import ProjectConnector, build_default_conne
 from app.project_runtime.models import ProjectProfile, ProjectProvisioningResult
 from app.project_runtime.scaffold import create_todo_scaffold
 from app.project_runtime.web_scaffold import create_web_app_scaffold
+from app.project_runtime.web_runner import WebProjectRunner
 from app.project_runtime.iseol_bridge import IseolPlanBridge
 from app.planning.models import PlanningHandoff
 from app.project_runtime.todo_runner import TodoProjectRunner
@@ -25,11 +26,13 @@ class ProjectProvisioner:
         connectors: Mapping[str, ProjectConnector] | None = None,
         iseol_bridge: IseolPlanBridge | None = None,
         todo_runner: TodoProjectRunner | None = None,
+        web_runner: WebProjectRunner | None = None,
     ) -> None:
         self.store = store
         self.connectors = dict(connectors or build_default_connectors())
         self.iseol_bridge = iseol_bridge
         self.todo_runner = todo_runner or TodoProjectRunner()
+        self.web_runner = web_runner or WebProjectRunner()
 
     def provision(
         self,

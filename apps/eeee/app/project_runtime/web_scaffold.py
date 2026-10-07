@@ -137,7 +137,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         global session
         if self.path == '/api/health': return self._send(200, {'status': 'ok', 'auth': 'demo' if os.getenv('AUTH_MODE', 'demo') == 'demo' else 'awaiting_configuration'})
-        if self.path == '/api/session': return self._send(200, session or {'mode': 'demo', 'user': {'email': 'local@example.test'}})
+        if self.path == '/api/session': return self._send(200, session) if session else self._send(401, {'error': 'login_required'})
         if self.path == '/api/todos':
             if not session: return self._send(401, {'error': 'login_required'})
             return self._send(200, store.list())

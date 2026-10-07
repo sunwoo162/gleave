@@ -1,0 +1,73 @@
+import json
+import socket
+import urllib.error
+import urllib.request
+
+from app.project_runtime.web_scaffold import create_web_app_scaffold
+from app.project_runtime.web_runner import WebProjectRunner
+
+
+def _port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def _request(url, method="GET", payload=None):
+    body = json.dumps(payload).encode() if payload is not None else None
+    request = urllib.request.Request(url, data=body, method=method, headers={"content-type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        return error.code, json.loads(error.read())
+
+
+def test_web_runner_executes_demo_login_and_authorized_todo_crud(tmp_path):
+    root = tmp_path / "web-project"
+    create_web_app_scaffold(root, "Todo Web")
+    runner = WebProjectRunner()
+    runtime = runner.start(root, port=_port())
+
+    try:
+        assert _request(runtime.url + "/api/health")[1]["status"] == "ok"
+        assert _request(runtime.url + "/api/session")[0] == 401
+        assert _request(runtime.url + "/api/todos")[0] == 401
+        assert _request(runtime.url + "/api/session", "POST", {"mode": "demo"})[0] == 200
+        created = _request(runtime.url + "/api/todos", "POST", {"title": "배포 전 점검", "priority": "high"})
+        assert created[0] == 201
+        assert created[1]["priority"] == "high"
+        updated = _request(runtime.url + "/api/todos/" + created[1]["id"], "PATCH", {"completed": True})
+        assert updated[1]["completed"] is True
+    finally:
+        runner.stop(runtime)
+
+
+def test_web_runner_reports_production_oauth_as_unconfigured(tmp_path):
+    root = tmp_path / "web-project"
+    create_web_app_scaffold(root, "Todo Web")
+    runner = WebProjectRunner()
+    runtime = runner.start(root, port=_port())
+
+    try:
+        status, payload = _request(runtime.url + "/api/session", "POST", {"mode": "google"})
+        assert status == 409
+        assert payload["error"] == "awaiting_configuration"
+    finally:
+        runner.stop(runtime)
+
+
+def test_web_runner_writes_qa_and_release_manifest_only_after_claimlatch_pass(tmp_path):
+    root = tmp_path / "web-project"
+    create_web_app_scaffold(root, "Todo Web")
+    result = WebProjectRunner().run(
+        project_id="project-web",
+        project_revision="rev-1",
+        workspace=root,
+        claim_latch={"decision": "PASS", "receiptId": "receipt-1", "claimLatchReportId": "report-1"},
+    )
+
+    assert result.status == "PASS"
+    assert (root / "QA_REPORT.json").is_file()
+    assert (root / "RELEASE_MANIFEST.json").is_file()
+    assert result.git_commit and len(result.git_commit) == 40
