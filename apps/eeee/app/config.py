@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None
+    local_model_base_url: str = "http://127.0.0.1:11434/api/chat"
+    local_model: str | None = None
+    local_model_timeout_seconds: float = 120.0
     execution_mode: Literal["demo", "workspace_verify"] = "demo"
     mobile_bridge_enabled: bool = True
     mobile_pairing_ttl_seconds: int = 600
@@ -55,6 +58,13 @@ class Settings(BaseSettings):
     def validate_mobile_pairing_ttl(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("mobile_pairing_ttl_seconds must be positive")
+        return value
+
+    @field_validator("local_model_timeout_seconds")
+    @classmethod
+    def validate_local_model_timeout(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("local_model_timeout_seconds must be positive")
         return value
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

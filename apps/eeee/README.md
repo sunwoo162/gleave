@@ -91,6 +91,18 @@ runtime is not configured. The pinned `openhands-sdk` and `openhands-tools`
 versions are installed together because the distributions are released as a
 matched pair.
 
+For the keyless local-first path, install Ollama separately, pull a local model,
+and configure only `LOCAL_MODEL`:
+
+```powershell
+ollama pull qwen2.5-coder:7b
+$env:LOCAL_MODEL = "qwen2.5-coder:7b"
+python -m app.desktop
+```
+
+The local model proposes structured actions; EEEE remains responsible for
+workspace boundaries, command execution, evidence, QA, and ClaimLatch gates.
+
 ## Approval model
 
 The first execution always crosses an approval boundary:

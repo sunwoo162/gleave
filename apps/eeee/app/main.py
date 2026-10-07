@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.agent.local_runtime import LocalAgentRuntime, OllamaBackend
 from app.agent.openhands_runtime import OpenHandsRuntime
 from app.agent.protocol import AgentRuntime
 from app.activity.store import ActivityLedger
@@ -165,11 +166,23 @@ def create_app(
         @application.on_event("shutdown")
         async def stop_claim_latch_plugin() -> None:
             claim_latch_process.stop()
-    runtime = agent_runtime or OpenHandsRuntime(
-        api_key=app_settings.llm_api_key,
-        model=app_settings.llm_model,
-        base_url=app_settings.llm_base_url,
-    )
+    runtime = agent_runtime
+    if runtime is None and app_settings.local_model:
+        runtime = LocalAgentRuntime(
+            backend=OllamaBackend(
+                model=app_settings.local_model,
+                base_url=app_settings.local_model_base_url,
+                timeout=app_settings.local_model_timeout_seconds,
+            ),
+            workspace_root=app_settings.workspace_root,
+            command_timeout_seconds=app_settings.command_timeout_seconds,
+        )
+    if runtime is None:
+        runtime = OpenHandsRuntime(
+            api_key=app_settings.llm_api_key,
+            model=app_settings.llm_model,
+            base_url=app_settings.llm_base_url,
+        )
     api_flow = ApiFlowService(
         coordinator,
         store,
@@ -188,7 +201,7 @@ def create_app(
         settings=app_settings, provisioner=project_provisioner, memory=coordinator.memory,
         trust_gate=trust_gate, event_bus=event_bus, event_publisher=mobile_bridge.publish,
         document_service=project_documents, planning_service=planning_service,
-        agent_runtime=runtime if app_settings.llm_api_key else None,
+        agent_runtime=runtime if agent_runtime is not None or app_settings.llm_api_key or app_settings.local_model else None,
     )
     application.state.kernel = kernel
     application.state.execution_store = kernel.executions
