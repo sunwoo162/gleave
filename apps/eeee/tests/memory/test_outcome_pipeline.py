@@ -77,6 +77,17 @@ def test_iseol_independent_qa_result_becomes_eeee_memory_candidate(tmp_path) -> 
     ]
 
 
+def test_verified_project_outcome_is_promoted_for_next_project_retrieval(tmp_path) -> None:
+    store = SQLiteStore(tmp_path / "state.sqlite3")
+    store.init()
+    coordinator = Coordinator(store)
+
+    records = coordinator.record_verified_project_outcome(_outcome())
+
+    assert records[0].status.value == "active"
+    assert coordinator.memory.search("independent QA", limit=10)[0].id == "memory-success-1"
+
+
 def test_memory_ingest_rejects_outcome_from_stale_project_revision(tmp_path) -> None:
     store = SQLiteStore(tmp_path / "state.sqlite3")
     store.init()

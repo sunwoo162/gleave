@@ -229,7 +229,7 @@ class ProjectExecutionCapability:
                         }],
                         "createdAt": datetime.now(timezone.utc),
                     })
-                    memory_records = self.coordinator.record_project_outcome(outcome)
+                    memory_records = self.coordinator.record_verified_project_outcome(outcome)
             document_execution_id = None
             if self.document_service is not None:
                 def sync_document(_document: ExecutionEnvelope) -> CapabilityOutcome:

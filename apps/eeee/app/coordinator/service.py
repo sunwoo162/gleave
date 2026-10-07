@@ -93,6 +93,35 @@ class Coordinator:
                 raise ApprovalError(f"ClaimLatch blocked memory promotion: {trust.reason}")
         return self.memory_pipeline.ingest(outcome_report)
 
+    def record_verified_project_outcome(
+        self,
+        outcome_report: ProjectOutcomeReportV1,
+        *,
+        actor: str = "EEEE Verified Outcome",
+    ) -> list[MemoryRecord]:
+        """Persist and activate only an outcome that passed every gate.
+
+        ``record_project_outcome`` intentionally leaves records as candidates
+        for the explicit API promotion flow. ISEOL's release path uses this
+        method only after the outcome has passed deterministic QA and
+        ClaimLatch, so verified patterns become available to the next project.
+        """
+
+        records = self.record_project_outcome(outcome_report)
+        promoted: list[MemoryRecord] = []
+        for record in records:
+            promoted.append(
+                self.memory.promote(
+                    record.id,
+                    actor=actor,
+                    evidence_ids=list(dict.fromkeys([
+                        *record.evidence_ids,
+                        *record.verification_ids,
+                    ])),
+                )
+            )
+        return promoted
+
     def promote_memory(
         self, memory_id: str, *, actor: str, evidence_ids: list[str]
     ) -> MemoryRecord:
