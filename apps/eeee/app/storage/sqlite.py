@@ -13,6 +13,7 @@ from app.domain.errors import AlreadyApprovedError, ApprovalError, CandidateSetC
 from app.integrations.claimlatch_audit import ClaimLatchAuditStore
 from app.memory.store import MemoryStore
 from app.project_runtime.models import ProjectDocumentRecord, ProjectEvidenceRecord, ProjectProfile
+from app.planning.models import PlanningArtifact, PlanningDecision, PlanningHandoff, PlanningSession
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -260,6 +261,23 @@ class SQLiteStore:
                 CREATE TABLE IF NOT EXISTS project_profiles (
                     project_id TEXT PRIMARY KEY, project_revision TEXT NOT NULL,
                     profile_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS planning_sessions (
+                    session_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, project_revision TEXT NOT NULL,
+                    revision INTEGER NOT NULL, status TEXT NOT NULL, session_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS planning_artifacts (
+                    artifact_id TEXT PRIMARY KEY, planning_session_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL, project_revision TEXT NOT NULL, artifact_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS planning_decisions (
+                    position INTEGER PRIMARY KEY AUTOINCREMENT, decision_id TEXT NOT NULL UNIQUE,
+                    planning_session_id TEXT NOT NULL, project_id TEXT NOT NULL,
+                    project_revision TEXT NOT NULL, decision_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS planning_handoffs (
+                    handoff_id TEXT PRIMARY KEY, planning_session_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL, project_revision TEXT NOT NULL, handoff_json TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS project_documents (
                     project_id TEXT NOT NULL, provider TEXT NOT NULL,
@@ -537,6 +555,103 @@ class SQLiteStore:
         if row is None:
             raise KeyError(f"Project profile not found: {project_id}")
         return ProjectProfile.model_validate_json(row["profile_json"])
+
+    def _ensure_planning_revision(self, project_id: str, project_revision: str) -> None:
+        from app.runtime.store import StaleProjectRevision
+
+        with self._connect() as connection:
+            row = connection.execute("SELECT revision FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"Project not found: {project_id}")
+        if row["revision"] != project_revision:
+            raise StaleProjectRevision(f"stale project revision for {project_id}: {project_revision}")
+
+    def save_planning_session(self, session: PlanningSession) -> None:
+        self._ensure_planning_revision(session.project_id, session.project_revision)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO planning_sessions "
+                "(session_id, project_id, project_revision, revision, status, session_json) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET "
+                "revision = excluded.revision, status = excluded.status, session_json = excluded.session_json",
+                (
+                    session.session_id, session.project_id, session.project_revision,
+                    session.revision, session.status, session.model_dump_json(),
+                ),
+            )
+
+    def get_planning_session(self, session_id: str) -> PlanningSession:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT session_json FROM planning_sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Planning session not found: {session_id}")
+        return PlanningSession.model_validate_json(row["session_json"])
+
+    def save_planning_artifact(self, artifact: PlanningArtifact) -> None:
+        self._ensure_planning_revision(artifact.project_id, artifact.project_revision)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO planning_artifacts "
+                "(artifact_id, planning_session_id, project_id, project_revision, artifact_json) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(artifact_id) DO UPDATE SET artifact_json = excluded.artifact_json",
+                (
+                    artifact.artifact_id, artifact.planning_session_id, artifact.project_id,
+                    artifact.project_revision, artifact.model_dump_json(),
+                ),
+            )
+
+    def list_planning_artifacts(self, session_id: str) -> list[PlanningArtifact]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT artifact_json FROM planning_artifacts WHERE planning_session_id = ? ORDER BY artifact_id",
+                (session_id,),
+            ).fetchall()
+        return [PlanningArtifact.model_validate_json(row["artifact_json"]) for row in rows]
+
+    def append_planning_decision(self, decision: PlanningDecision) -> None:
+        self._ensure_planning_revision(decision.project_id, decision.project_revision)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO planning_decisions "
+                "(decision_id, planning_session_id, project_id, project_revision, decision_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    decision.decision_id, decision.planning_session_id, decision.project_id,
+                    decision.project_revision, decision.model_dump_json(),
+                ),
+            )
+
+    def list_planning_decisions(self, session_id: str) -> list[PlanningDecision]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT decision_json FROM planning_decisions "
+                "WHERE planning_session_id = ? ORDER BY position", (session_id,),
+            ).fetchall()
+        return [PlanningDecision.model_validate_json(row["decision_json"]) for row in rows]
+
+    def save_planning_handoff(self, handoff: PlanningHandoff) -> None:
+        self._ensure_planning_revision(handoff.project_id, handoff.project_revision)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO planning_handoffs "
+                "(handoff_id, planning_session_id, project_id, project_revision, handoff_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    handoff.handoff_id, handoff.planning_session_id, handoff.project_id,
+                    handoff.project_revision, handoff.model_dump_json(),
+                ),
+            )
+
+    def get_planning_handoff(self, handoff_id: str) -> PlanningHandoff:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT handoff_json FROM planning_handoffs WHERE handoff_id = ?", (handoff_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Planning handoff not found: {handoff_id}")
+        return PlanningHandoff.model_validate_json(row["handoff_json"])
 
     def save_project_document(self, document: ProjectDocumentRecord) -> None:
         with self._connect() as connection:
