@@ -48,7 +48,10 @@ class TodoProjectRunner:
         "src/entities/todo/model.js",
         "src/features/todo-create/ui.js",
         "src/features/todo-toggle/ui.js",
+        "src/features/todo-edit/ui.js",
+        "src/features/todo-filter/ui.js",
         "src/widgets/todo-list/ui.js",
+        "src/widgets/todo-stats/ui.js",
         "src/pages/todo-page/ui.js",
         "src/shared/lib/storage.js",
         "src/shared/ui/styles.css",
@@ -180,6 +183,13 @@ class TodoProjectRunner:
         main = root / "src/app/main.js"
         checks.append(self._check("todo:dom-mount", "renderTodoPage" in self._read(main), main))
         checks.append(self._check("todo:persistence", "localStorage" in self._read(root / "src/shared/lib/storage.js"), root / "src/shared/lib/storage.js"))
+        page = self._read(root / "src/pages/todo-page/ui.js")
+        model = self._read(root / "src/entities/todo/model.js")
+        styles = self._read(root / "src/shared/ui/styles.css")
+        checks.append(self._check("todo:dashboard", "data-stat" in page and "progress-panel" in page, root / "src/pages/todo-page/ui.js"))
+        checks.append(self._check("todo:editing-and-filtering", "data-filter" in page and "updateTodoAt" in page, root / "src/pages/todo-page/ui.js"))
+        checks.append(self._check("todo:priority-and-due-date", "priority" in model and "dueDate" in model, root / "src/entities/todo/model.js"))
+        checks.append(self._check("todo:responsive-design", "@media" in styles and "focus-visible" in styles, root / "src/shared/ui/styles.css"))
         for relative in self.javascript_files:
             path = root / relative
             if path.is_file():
@@ -192,7 +202,7 @@ class TodoProjectRunner:
                 checks.append(self._check("syntax:" + relative, completed.returncode == 0, path, completed.stderr.strip()))
         e2e = root / "tests/e2e/todo-flow.md"
         scenario = self._read(e2e).lower()
-        checks.append(self._check("e2e:scenario", "새로고침" in scenario and "삭제" in scenario, e2e))
+        checks.append(self._check("e2e:scenario", all(token in scenario for token in ("새로고침", "삭제", "수정", "반응형", "검색")), e2e))
         return checks
 
     @staticmethod
