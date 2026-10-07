@@ -1,1 +1,1 @@
-"""OSS Product Builder local service."""
+"""Gleave local-first assistant service."""

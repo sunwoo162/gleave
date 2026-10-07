@@ -1,6 +1,7 @@
 """Versioned task leases and fresh-context review contracts."""
 
 from collections.abc import Iterable
+from datetime import datetime, timezone
 import re
 from typing import Literal, Protocol
 
@@ -101,7 +102,12 @@ class Coordinator:
 
     def get_state(self) -> ProjectState:
         try:
-            return self.store.get_harness_state(self.project_id)
+            state = self.store.get_harness_state(self.project_id)
+            revision = self._project_revision()
+            if revision != state.project_revision:
+                state = state.model_copy(update={"project_revision": revision})
+                self.store.save_harness_state(self.project_id, state)
+            return state
         except KeyError:
             state = ProjectState(
                 version=0,
@@ -109,6 +115,7 @@ class Coordinator:
                 current_commit=None,
                 active_tasks=[],
                 artifacts=[],
+                project_revision=self._project_revision(),
             )
             self.store.save_harness_state(self.project_id, state)
             return state
@@ -124,7 +131,11 @@ class Coordinator:
                 raise OwnershipConflictError(
                     f"Task {task.id} overlaps active task {active.id}"
                 )
-        started = task.model_copy(update={"state_version": current.version, "status": "running"})
+        started = task.model_copy(update={
+            "state_version": current.version, "status": "running",
+            "project_revision": task.project_revision or current.project_revision or self._project_revision(),
+            "started_at": task.started_at or datetime.now(timezone.utc),
+        })
         next_state = current.model_copy(
             update={"active_tasks": [*current.active_tasks, started]}
         )
@@ -149,7 +160,8 @@ class Coordinator:
             "evidence_paths",
         )
         updated_task = task.model_copy(
-            update={"status": "handed_off", "handoff": dict(handoff)}
+            update={"status": "handed_off", "handoff": dict(handoff),
+                    "completed_at": datetime.now(timezone.utc)}
         )
         artifacts = _unique([*current.artifacts, *changed_files, *evidence])
         commit = handoff.get("commit")
@@ -166,6 +178,13 @@ class Coordinator:
         self.store.save_harness_task(self.project_id, updated_task)
         self.store.save_harness_state(self.project_id, next_state)
         return next_state
+
+    def _project_revision(self) -> str | None:
+        # Standalone harness clients historically need not create a Project.
+        try:
+            return self.store.get_project(self.project_id).revision
+        except KeyError:
+            return None
 
     def review(self, diff: str, requirements: RequestBrief) -> ReviewReport:
         if self.reviewer is None:

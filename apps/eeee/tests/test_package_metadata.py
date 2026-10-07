@@ -14,7 +14,7 @@ def test_project_metadata_declares_version_and_console_script():
     assert 'version = "0.1.0"' in metadata
     assert 'license = "MIT"' in metadata
     assert 'license-files = ["LICENSE"]' in metadata
-    assert 'oss-product-builder = "app.main:run"' in metadata
+    assert 'gleave = "app.main:run"' in metadata
 
 
 def test_artifact_validator_accepts_one_wheel_and_source_distribution(tmp_path):

@@ -1,10 +1,26 @@
 {
   "schemaVersion": 1,
   "aggregateRepository": {
-    "name": "eeee-platform",
+    "name": "gleave",
+    "productName": "Gleave",
     "path": "C:/Users/user/Documents/eeee-platform",
-    "purpose": "Local-first EEEE personal assistant with ISEOL Agent orchestration and ClaimLatch verification"
+    "purpose": "Local-first Gleave personal assistant with EEEE orchestration, ISEOL Agent execution, and ClaimLatch verification",
+    "repositoryUrl": "https://github.com/sunwoo162/gleave.git"
   },
+  "deploymentTargets": [
+    {
+      "name": "gleave-desktop",
+      "path": "apps/desktop",
+      "runtime": "apps/eeee plus app/desktop",
+      "purpose": "Local Gleave source of truth, assistant runtime, project execution, and paired bridge"
+    },
+    {
+      "name": "gleave-mobile",
+      "path": "apps/mobile",
+      "runtime": "Remote bridge client",
+      "purpose": "Paired remote commands, live status, QA, review, and secretary notifications"
+    }
+  ],
   "sources": [
     {
       "name": "eeee",

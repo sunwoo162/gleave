@@ -1,10 +1,85 @@
-"""PySide6 desktop pet window."""
-
-from pathlib import Path
+"""PySide6 desktop companion window."""
 
 from app.desktop.client import PetApiClient
 from app.desktop.presentation import PetPresentation
+from app.desktop.session import DesktopSession
 from app.desktop.worker import QtTaskRunner
+
+
+_DESKTOP_TEXT = {
+    "ko": {
+        "window_title": "EEEE • Gleave",
+        "language": "언어",
+        "ready": "준비됨",
+        "start_hint": "무엇을 도와드릴까요?",
+        "project_none": "프로젝트: 선택되지 않음",
+        "claim_checking": "ClaimLatch: 확인 중",
+        "mobile_available": "모바일 브리지: 데스크톱에서 연결 가능",
+        "assistant_placeholder": "EEEE에게 다음 할 일을 물어보세요…",
+        "ask": "EEEE에게 묻기",
+        "pairing": "휴대폰 연결 코드",
+        "pairing_none": "연결 코드 없음",
+        "events_none": "최근 EEEE 이벤트 없음",
+        "open_workspace": "Gleave 워크스페이스 열기",
+        "hide": "트레이로 숨기기",
+        "connecting": "로컬 EEEE 코디네이터에 연결 중…",
+        "assistant_busy": "EEEE가 가장 적합한 기능을 선택하는 중…",
+        "pairing_busy": "짧은 휴대폰 연결 코드를 발급하는 중…",
+        "project_prefix": "프로젝트",
+        "claim_prefix": "ClaimLatch",
+        "mobile_prefix": "모바일 브리지",
+        "mobile_paired": "연결된 기기 {count}대",
+        "recent_prefix": "최근",
+        "phone_code": "휴대폰 코드: {code}",
+        "expires": " (만료 {expires})",
+        "headline": {
+            "idle": "준비됨",
+            "researching": "조사 중",
+            "awaiting_approval": "승인 필요",
+            "working": "작업 중",
+            "verifying": "검증 중",
+            "completed": "완료됨",
+            "blocked": "중단됨",
+            "failed": "실패",
+        },
+    },
+    "en": {
+        "window_title": "EEEE • Gleave",
+        "language": "Language",
+        "ready": "Ready",
+        "start_hint": "What can I help with?",
+        "project_none": "Project: none selected",
+        "claim_checking": "ClaimLatch: checking",
+        "mobile_available": "Mobile bridge: available from Desktop",
+        "assistant_placeholder": "Ask EEEE what to do next…",
+        "ask": "Ask EEEE",
+        "pairing": "Pair phone",
+        "pairing_none": "No pairing code issued",
+        "events_none": "No recent EEEE events",
+        "open_workspace": "Open Gleave workspace",
+        "hide": "Hide to tray",
+        "connecting": "Connecting to the local EEEE coordinator…",
+        "assistant_busy": "EEEE is selecting the best capability…",
+        "pairing_busy": "Issuing a short-lived phone pairing code…",
+        "project_prefix": "Project",
+        "claim_prefix": "ClaimLatch",
+        "mobile_prefix": "Mobile bridge",
+        "mobile_paired": "{count} paired device(s)",
+        "recent_prefix": "Recent",
+        "phone_code": "Phone code: {code}",
+        "expires": " (expires {expires})",
+        "headline": {
+            "idle": "Ready",
+            "researching": "Researching",
+            "awaiting_approval": "Approval needed",
+            "working": "Working",
+            "verifying": "Verifying",
+            "completed": "Completed",
+            "blocked": "Blocked",
+            "failed": "Failed",
+        },
+    },
+}
 
 
 class PetWindow:
@@ -12,10 +87,9 @@ class PetWindow:
 
     def __new__(cls, client: PetApiClient, *, initial_error: str | None = None):
         try:
-            from PySide6.QtCore import Qt, QTimer
-            from PySide6.QtGui import QFont
+            from PySide6.QtCore import QSettings, QTimer, Qt
+            from PySide6.QtGui import QAction, QFont
             from PySide6.QtWidgets import (
-                QAction,
                 QComboBox,
                 QHBoxLayout,
                 QLabel,
@@ -37,40 +111,105 @@ class PetWindow:
             def __init__(self):
                 super().__init__()
                 self.client = client
+                self.session = DesktopSession(client)
                 self.current_state: dict[str, object] = {}
+                self.desktop_snapshot: dict[str, object] = {}
                 self._drag_offset = None
                 self._busy = False
+                self._refreshing = False
                 self._closing = False
                 self._quit_requested = False
                 self._tray = None
                 self._task_runner = QtTaskRunner(parent=self)
-                self.setWindowTitle("Development Pet")
+                self._settings = QSettings("Gleave", "GleaveDesktop")
+                saved_language = self._settings.value("language", "ko")
+                self.language = saved_language if saved_language in _DESKTOP_TEXT else "ko"
+                self.setObjectName("desktopCompanion")
+                self.setWindowTitle(self._text("window_title"))
                 self.setWindowFlags(
                     Qt.WindowType.FramelessWindowHint
                     | Qt.WindowType.WindowStaysOnTopHint
                     | Qt.WindowType.Tool
                 )
                 self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-                self.setMinimumWidth(320)
+                self.setAutoFillBackground(True)
+                self.setMinimumWidth(360)
+                self.setMaximumWidth(520)
 
                 root = QVBoxLayout(self)
-                root.setContentsMargins(14, 14, 14, 14)
-                root.setSpacing(8)
+                root.setContentsMargins(18, 16, 18, 16)
+                root.setSpacing(10)
+
+                language_row = QHBoxLayout()
+                self.language_label = QLabel()
+                self.language_select = QComboBox()
+                self.language_select.addItem("한국어", "ko")
+                self.language_select.addItem("English", "en")
+                self.language_select.setCurrentIndex(0 if self.language == "ko" else 1)
+                self.language_select.currentIndexChanged.connect(self._change_language)
+                language_row.addStretch(1)
+                language_row.addWidget(self.language_label)
+                language_row.addWidget(self.language_select)
+                root.addLayout(language_row)
 
                 self.character = QLabel("🐾")
                 self.character.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.character.setFont(QFont("Segoe UI Emoji", 34))
                 root.addWidget(self.character)
 
-                self.headline = QLabel("Ready")
+                self.headline = QLabel()
                 self.headline.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.headline.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
                 root.addWidget(self.headline)
 
-                self.detail = QLabel("Start a development request.")
+                self.detail = QLabel()
                 self.detail.setWordWrap(True)
                 self.detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 root.addWidget(self.detail)
+
+                self.project_status = QLabel()
+                self.project_status.setWordWrap(True)
+                root.addWidget(self.project_status)
+                self.trust_status = QLabel()
+                self.trust_status.setWordWrap(True)
+                root.addWidget(self.trust_status)
+                self.mobile_status = QLabel()
+                self.mobile_status.setWordWrap(True)
+                root.addWidget(self.mobile_status)
+
+                assistant_row = QHBoxLayout()
+                self.assistant_input = QLineEdit()
+                self.assistant_button = QPushButton()
+                self.assistant_button.clicked.connect(self._route_assistant)
+                assistant_row.addWidget(self.assistant_input)
+                assistant_row.addWidget(self.assistant_button)
+                root.addLayout(assistant_row)
+
+                pairing_row = QHBoxLayout()
+                self.pairing_button = QPushButton()
+                self.pairing_button.clicked.connect(self._issue_pairing_code)
+                self.pairing_status = QLabel()
+                self.pairing_status.setWordWrap(True)
+                pairing_row.addWidget(self.pairing_button)
+                pairing_row.addWidget(self.pairing_status)
+                root.addLayout(pairing_row)
+
+                self.events_view = QLabel()
+                self.events_view.setWordWrap(True)
+                root.addWidget(self.events_view)
+
+                self.workspace_button = QPushButton()
+                self.workspace_button.clicked.connect(self._open_workspace)
+                root.addWidget(self.workspace_button)
+
+                self.hide_button = QPushButton()
+                self.hide_button.clicked.connect(self.hide_to_tray)
+                root.addWidget(self.hide_button)
+
+                self.legacy_panel = QWidget()
+                legacy_layout = QVBoxLayout(self.legacy_panel)
+                legacy_layout.setContentsMargins(0, 0, 0, 0)
+                legacy_layout.setSpacing(8)
 
                 request_row = QHBoxLayout()
                 self.request_input = QLineEdit()
@@ -79,45 +218,47 @@ class PetWindow:
                 self.request_button.clicked.connect(self._create_request)
                 request_row.addWidget(self.request_input)
                 request_row.addWidget(self.request_button)
-                root.addLayout(request_row)
+                legacy_layout.addLayout(request_row)
 
                 self.candidate_select = QComboBox()
                 self.approve_button = QPushButton("Approve selection")
                 self.approve_button.clicked.connect(self._approve)
-                root.addWidget(self.candidate_select)
-                root.addWidget(self.approve_button)
+                legacy_layout.addWidget(self.candidate_select)
+                legacy_layout.addWidget(self.approve_button)
 
                 self.advance_button = QPushButton("Advance demo step")
                 self.advance_button.clicked.connect(self._advance)
-                root.addWidget(self.advance_button)
+                legacy_layout.addWidget(self.advance_button)
 
                 self.retry_button = QPushButton("Retry")
                 self.retry_button.clicked.connect(self._retry)
-                root.addWidget(self.retry_button)
-
-                self.workspace_button = QPushButton("Open workspace")
-                self.workspace_button.clicked.connect(self._open_workspace)
-                root.addWidget(self.workspace_button)
-
-                self.hide_button = QPushButton("Hide to tray")
-                self.hide_button.clicked.connect(self.hide_to_tray)
-                root.addWidget(self.hide_button)
+                legacy_layout.addWidget(self.retry_button)
+                self.legacy_panel.setVisible(False)
+                root.addWidget(self.legacy_panel)
 
                 self.setStyleSheet(
-                    "QWidget { background: #fff8ef; border: 1px solid #d7b98e; "
-                    "border-radius: 16px; color: #3d2b1f; }"
-                    "QLineEdit, QComboBox { background: #ffffff; padding: 6px; "
-                    "border: 1px solid #d7b98e; border-radius: 7px; }"
-                    "QPushButton { background: #f0a35b; padding: 7px; border-radius: 7px; }"
-                    "QPushButton:disabled { background: #e2d8cd; color: #8f8175; }"
+                    "#desktopCompanion { background: #20232b; border: 1px solid #4b5263; "
+                    "border-radius: 18px; color: #f3f5f8; }"
+                    "#desktopCompanion QLabel { background: transparent; border: none; "
+                    "color: #f3f5f8; }"
+                    "#desktopCompanion QLineEdit, #desktopCompanion QComboBox { "
+                    "background: #2b303b; padding: 8px; border: 1px solid #596274; "
+                    "border-radius: 9px; color: #f3f5f8; }"
+                    "#desktopCompanion QPushButton { background: #8f7cff; padding: 8px 10px; "
+                    "border: none; border-radius: 9px; color: #ffffff; }"
+                    "#desktopCompanion QPushButton:hover { background: #a294ff; }"
+                    "#desktopCompanion QPushButton:disabled { background: #3b414d; color: #8e96a5; }"
+                    "#desktopCompanion QComboBox QAbstractItemView { background: #2b303b; "
+                    "color: #f3f5f8; selection-background-color: #5147a5; }"
                 )
+                self._apply_language()
                 self._timer = QTimer(self)
-                self._timer.timeout.connect(self.refresh)
+                self._timer.timeout.connect(self._background_refresh)
                 self._setup_tray(QApplication, QStyle, QSystemTrayIcon, QAction, QMenu)
                 if initial_error:
                     self._render({"state": "blocked", "message": initial_error})
                 else:
-                    self._timer.start(1500)
+                    self._timer.start(5000)
                     self.refresh()
 
             def mousePressEvent(self, event):
@@ -184,13 +325,59 @@ class PetWindow:
                 self._quit_requested = True
                 self.close()
 
-            def refresh(self):
-                self._submit(self.client.get_state, "Connecting to the local coordinator...")
+            def _text(self, key: str) -> str:
+                value = _DESKTOP_TEXT[self.language].get(key, key)
+                return value if isinstance(value, str) else key
+
+            def _change_language(self, index: int):
+                language = self.language_select.itemData(index)
+                if language not in _DESKTOP_TEXT:
+                    return
+                self.language = language
+                self._settings.setValue("language", language)
+                self._apply_language()
+                self._render_desktop_status(self.desktop_snapshot)
+
+            def _apply_language(self):
+                self.setWindowTitle(self._text("window_title"))
+                self.language_label.setText(self._text("language"))
+                self.assistant_input.setPlaceholderText(self._text("assistant_placeholder"))
+                self.assistant_button.setText(self._text("ask"))
+                self.pairing_button.setText(self._text("pairing"))
+                self.pairing_status.setText(self._text("pairing_none"))
+                self.workspace_button.setText(self._text("open_workspace"))
+                self.hide_button.setText(self._text("hide"))
+                if not self.current_state:
+                    self.headline.setText(self._text("ready"))
+                    self.detail.setText(self._text("start_hint"))
+                    self.project_status.setText(self._text("project_none"))
+                    self.trust_status.setText(self._text("claim_checking"))
+                    self.mobile_status.setText(self._text("mobile_available"))
+                    self.events_view.setText(self._text("events_none"))
+                self._update_controls()
+
+            def refresh(self, *, silent: bool = False):
+                def operation():
+                    legacy_state = self.client.get_state()
+                    if not hasattr(self.client, "get_desktop_state"):
+                        return legacy_state
+                    snapshot = self.session.refresh()
+                    project_state = snapshot.get("projectState")
+                    if isinstance(project_state, dict):
+                        return {**snapshot, **project_state}
+                    return {**snapshot, **legacy_state}
+
+                self._submit(operation, self._text("connecting"), silent=silent)
+
+            def _background_refresh(self):
+                self.refresh(silent=True)
 
             def _update_controls(self):
                 view = PetPresentation.from_view_model(self.current_state)
                 self.request_input.setEnabled(not self._busy)
                 self.request_button.setEnabled(not self._busy)
+                self.assistant_input.setEnabled(not self._busy)
+                self.assistant_button.setEnabled(not self._busy)
                 self.candidate_select.setEnabled(not self._busy)
                 self.approve_button.setEnabled(
                     not self._busy and view.show_approval and self.candidate_select.count() > 0
@@ -202,20 +389,26 @@ class PetWindow:
                     not self._busy and view.state in {"blocked", "failed"}
                 )
                 self.workspace_button.setEnabled(
-                    not self._busy and isinstance(self.current_state.get("workspace"), str)
+                    not self._busy
                 )
 
-            def _submit(self, operation, busy_message: str, on_success=None):
-                if self._busy or self._closing:
+            def _submit(self, operation, busy_message: str, on_success=None, *, silent=False):
+                if self._closing or (self._busy and not silent) or (silent and self._refreshing):
                     return
-                self._busy = True
-                self.detail.setText(busy_message)
-                self._update_controls()
+                if silent:
+                    self._refreshing = True
+                else:
+                    self._busy = True
+                    self.detail.setText(busy_message)
+                    self._update_controls()
 
                 def success(payload):
                     if self._closing:
                         return
-                    self._busy = False
+                    if silent:
+                        self._refreshing = False
+                    else:
+                        self._busy = False
                     if on_success is None:
                         self._render(payload)
                     else:
@@ -223,6 +416,9 @@ class PetWindow:
 
                 def failure(error):
                     if self._closing:
+                        return
+                    if silent:
+                        self._refreshing = False
                         return
                     self._busy = False
                     failed_payload = dict(self.current_state)
@@ -235,8 +431,25 @@ class PetWindow:
                     failure(exc)
 
             def _render(self, payload: dict[str, object]):
-                self.current_state = payload
-                view = PetPresentation.from_view_model(payload)
+                self.desktop_snapshot = payload if "claimLatch" in payload else self.desktop_snapshot
+                project_state = payload.get("projectState")
+                view_payload = (
+                    {**payload, **project_state}
+                    if isinstance(project_state, dict)
+                    else payload
+                )
+                if not isinstance(view_payload.get("state"), str):
+                    assistant_route = payload.get("assistantRoute")
+                    if isinstance(assistant_route, dict):
+                        view_payload = {
+                            **view_payload,
+                            "state": "idle",
+                            "message": assistant_route.get(
+                                "message", "EEEE completed the request."
+                            ),
+                        }
+                self.current_state = view_payload
+                view = PetPresentation.from_view_model(view_payload)
                 self.character.setText({
                     "sleepy": "😴",
                     "curious": "🔎",
@@ -248,8 +461,10 @@ class PetWindow:
                     "worried": "😟",
                     "confused": "❔",
                 }[view.expression])
-                self.headline.setText(view.headline)
+                headlines = _DESKTOP_TEXT[self.language]["headline"]
+                self.headline.setText(headlines.get(view.state, view.headline))
                 self.detail.setText(view.detail)
+                self._render_desktop_status(payload)
                 candidates = payload.get("candidates", [])
                 self.candidate_select.clear()
                 for candidate in candidates if isinstance(candidates, list) else []:
@@ -258,6 +473,75 @@ class PetWindow:
                         if isinstance(repository, dict) and isinstance(repository.get("full_name"), str):
                             self.candidate_select.addItem(repository["full_name"])
                 self._update_controls()
+
+            def _render_desktop_status(self, payload: dict[str, object]) -> None:
+                project_id = payload.get("projectId")
+                self.project_status.setText(
+                    f"{self._text('project_prefix')}: {project_id}"
+                    if isinstance(project_id, str)
+                    else self._text("project_none")
+                )
+                claim_latch = payload.get("claimLatch")
+                if isinstance(claim_latch, dict):
+                    status = claim_latch.get("status", "unknown")
+                    profile = claim_latch.get("profileVersion", "unknown")
+                    self.trust_status.setText(
+                        f"{self._text('claim_prefix')}: {status} • {profile}"
+                    )
+                mobile = payload.get("mobileBridge")
+                if isinstance(mobile, dict):
+                    paired = mobile.get("pairedDevices", 0)
+                    self.mobile_status.setText(
+                        f"{self._text('mobile_prefix')}: "
+                        f"{self._text('mobile_paired').format(count=paired)}"
+                    )
+                events = payload.get("events")
+                if isinstance(events, list) and events:
+                    labels = [
+                        str(event.get("kind", "event"))
+                        for event in events[-4:]
+                        if isinstance(event, dict)
+                    ]
+                    self.events_view.setText(
+                        f"{self._text('recent_prefix')}: " + " • ".join(labels)
+                    )
+                elif "claimLatch" in payload:
+                    self.events_view.setText(self._text("events_none"))
+
+            def _route_assistant(self):
+                text = self.assistant_input.text().strip()
+                if not text:
+                    return
+
+                def on_success(payload):
+                    self.assistant_input.clear()
+                    self._render(payload)
+
+                self._submit(
+                    lambda: self.session.route(text),
+                    self._text("assistant_busy"),
+                    on_success=on_success,
+                )
+
+            def _issue_pairing_code(self):
+                def on_success(payload):
+                    code = payload.get("code")
+                    expires = payload.get("expiresAt")
+                    if isinstance(code, str):
+                        suffix = (
+                            self._text("expires").format(expires=expires)
+                            if isinstance(expires, str)
+                            else ""
+                        )
+                        self.pairing_status.setText(
+                            f"{self._text('phone_code').format(code=code)}{suffix}"
+                        )
+
+                self._submit(
+                    self.session.issue_pairing_code,
+                    self._text("pairing_busy"),
+                    on_success=on_success,
+                )
 
             def _create_request(self):
                 text = self.request_input.text().strip()
@@ -304,11 +588,12 @@ class PetWindow:
                     self._submit(lambda: self.client.retry(task_id), "Retrying the pet task...")
 
             def _open_workspace(self):
-                workspace = self.current_state.get("workspace")
-                if isinstance(workspace, str):
-                    path = Path(workspace)
-                    if path.exists():
-                        import os
-                        os.startfile(path)
+                import webbrowser
+
+                webbrowser.open(f"{self.client.base_url}/?lang={self.language}")
 
         return _Window()
+
+
+# Keep the old import working while presenting the product as Gleave Desktop.
+DesktopWindow = PetWindow

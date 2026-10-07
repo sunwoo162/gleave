@@ -14,6 +14,7 @@ import { validateCiArtifactForPull } from "./review/github-ci-review.js";
 import { GitHubReviewService } from "./review/github-review.js";
 import { reviewRuntimeMessages } from "./review/review-runtime.js";
 import { ensureProjectReviewWorkflows } from "./review/review-workflow-install.js";
+import { EeeeReviewBridge } from "./eeee-review-bridge.js";
 
 const POLL_INTERVAL_MS = 60_000;
 type RepositorySide = "frontend" | "backend";
@@ -74,6 +75,7 @@ async function syncPullRequests(
   reviewer: GitHubReviewService,
   project: StoredProject,
   side: RepositorySide,
+  eeeeBridge?: EeeeReviewBridge,
 ): Promise<void> {
   const repository = projectRepository(project, side);
   const fullName = repositoryName(repository);
@@ -90,6 +92,22 @@ async function syncPullRequests(
       }
       validateCiArtifactForPull(artifact, fullName, pull.number, pull.headSha);
       const result = await reviewer.reviewCiArtifact(fullName, pull.number, pull.headSha, artifact);
+      if (eeeeBridge && project.eeeeProjectId && project.eeeeProjectRevision) {
+        await eeeeBridge.ingest({
+          projectId: project.eeeeProjectId,
+          projectRevision: project.eeeeProjectRevision,
+          repository: fullName,
+          pullNumber: pull.number,
+          headSha: pull.headSha,
+          reviewStatus: artifact.checks.some((check) => check.status === "failed")
+            ? "failed"
+            : result.findings > 0 ? "warned" : "passed",
+          findingsCount: result.findings,
+          checks: artifact.checks,
+          source: "iseol-github-review",
+          generatedAt: new Date().toISOString(),
+        });
+      }
       if (!result.skipped) {
         await notify(client, project, side, `🤖 PR #${pull.number} 이설 코드리뷰 완료 · inline ${result.findings}개`);
         await recordReviewProjectHistory(
@@ -134,6 +152,9 @@ async function syncGitHubAutomationPollingUnlocked(
   const source = new GitHubAutomationSource(config.githubToken);
   const github = new GitHubWebhookService(config.githubToken);
   const reviewer = new GitHubReviewService(config.githubToken);
+  const eeeeBridge = config.eeeeBridgeUrl
+    ? new EeeeReviewBridge(config.eeeeBridgeUrl, config.eeeeBridgeToken)
+    : undefined;
   const schedule = calendarEnabled
     ? new GitHubScheduleSyncService(
         new GoogleCalendarService(config.googleClientId, config.googleClientSecret, config.googleRefreshToken, config.googleRedirectUri),
@@ -159,7 +180,7 @@ async function syncGitHubAutomationPollingUnlocked(
           activeKeys.add(GitHubAutomationPollStateStore.key(current.id, fullName));
 
           try {
-            await syncPullRequests(client, source, reviewer, current, side);
+            await syncPullRequests(client, source, reviewer, current, side, eeeeBridge);
           } catch (error) {
             console.error(`PR 목록 폴링 실패 (${current.name}/${side})`, error);
           }

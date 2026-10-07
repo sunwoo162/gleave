@@ -56,6 +56,7 @@ class EmbeddedApiRuntime:
                 port=self.port,
                 log_level="critical",
                 access_log=False,
+                log_config=None,
             )
         )
         self._thread = threading.Thread(

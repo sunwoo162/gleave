@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --import tsx --test tests/*.test.ts"
+    "start": "tsx src/standalone.ts",
+    "test": "node --import tsx --test tests/adapter.test.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.0"

@@ -1,6 +1,6 @@
-# OSS Product Builder
+# Gleave
 
-OSS Product Builder is a local-first FastAPI workbench for turning a product request into an evidence-backed OSS comparison, an explicit approval, and a recorded workspace run. The browser UI is served by the local process and uses no third-party CDN assets.
+Gleave is a local-first FastAPI workbench and personal assistant platform. EEEE routes user intent, ISEOL executes project work, and ClaimLatch verifies claims and actions before release or memory promotion. The browser UI is served by the local process and uses no third-party CDN assets.
 
 This repository is released under the MIT License and is intended for
 self-hosted use. It is not a hosted multi-tenant service.
@@ -25,7 +25,7 @@ python -m app.main
 After installation, the equivalent console command is:
 
 ```powershell
-oss-product-builder
+gleave
 ```
 
 Open <http://127.0.0.1:8000/>. The health endpoint is <http://127.0.0.1:8000/health>.
@@ -59,8 +59,8 @@ Copy `.env.example` to `.env` when environment configuration is needed.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `APP_NAME` | FastAPI application title | `OSS Product Builder` |
-| `DATA_DIR` | SQLite state directory | `.oss-builder` |
+| `APP_NAME` | FastAPI application title | `Gleave` |
+| `DATA_DIR` | SQLite state directory | `.gleave` |
 | `WORKSPACE_ROOT` | Allowed root for request workspaces | `workspaces` |
 | `GITHUB_TOKEN` | Optional GitHub API token for live research | empty |
 | `LLM_BASE_URL` | Optional OpenHands-compatible model endpoint | empty |
@@ -71,6 +71,37 @@ Copy `.env.example` to `.env` when environment configuration is needed.
 | `MAX_COMMAND_OUTPUT_CHARS` | Output limit recorded per command | `8000` |
 
 OpenHands is optional. Research, comparison, approval, and the UI remain available without `LLM_API_KEY` or `LLM_MODEL`; an execution run is recorded as `unavailable` with a configuration error until those values and a compatible OpenHands SDK are installed.
+
+To enable the real ISEOL coding-agent runtime in the same virtual environment,
+install the pinned SDK/tool pair and configure an OpenHands-compatible model:
+
+```powershell
+python -m pip install -e ".[agent,desktop,dev]"
+$env:LLM_MODEL = "your-provider/model-name"
+$env:LLM_API_KEY = "your-model-provider-key"
+# Optional for an OpenAI-compatible endpoint:
+# $env:LLM_BASE_URL = "https://your-provider.example/v1"
+python -m app.desktop
+```
+
+The application does not accept a browser ChatGPT login as an API credential.
+The desktop shell must receive an explicit model endpoint/key, and it keeps the
+run unavailable instead of claiming that an AI agent completed work when the
+runtime is not configured. The pinned `openhands-sdk` and `openhands-tools`
+versions are installed together because the distributions are released as a
+matched pair.
+
+For the keyless local-first path, install Ollama separately, pull a local model,
+and configure only `LOCAL_MODEL`:
+
+```powershell
+ollama pull qwen2.5-coder:7b
+$env:LOCAL_MODEL = "qwen2.5-coder:7b"
+python -m app.desktop
+```
+
+The local model proposes structured actions; EEEE remains responsible for
+workspace boundaries, command execution, evidence, QA, and ClaimLatch gates.
 
 ## Approval model
 

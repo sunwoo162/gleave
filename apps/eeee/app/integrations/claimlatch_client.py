@@ -42,6 +42,7 @@ class ClaimLatchClient:
         audit_store: ClaimLatchAuditStore | None = None,
         policy_version: str = "claimlatch-policy-v1",
         adapter_version: str = "eeee-claimlatch-adapter-v1",
+        claim_latch_profile_version: str = "claimlatch-v0.2.0",
         claim_latch_version: str = "0.3.86",
         current_revision_resolver: Callable[[str], str | None] | None = None,
     ) -> None:
@@ -51,6 +52,7 @@ class ClaimLatchClient:
         self.audit_store = audit_store
         self.policy_version = policy_version
         self.adapter_version = adapter_version
+        self.claim_latch_profile_version = claim_latch_profile_version
         self.claim_latch_version = claim_latch_version
         self.current_revision_resolver = current_revision_resolver
         if self.audit_store is not None:
@@ -187,6 +189,7 @@ class ClaimLatchClient:
             policy_version=self.policy_version,
             adapter_version=self.adapter_version,
             claim_latch_version=self.claim_latch_version,
+            claim_latch_profile_version=self.claim_latch_profile_version,
             request_payload=request_payload,
             envelope=envelope.model_dump(by_alias=True, mode="json"),
             created_at=envelope.created_at,

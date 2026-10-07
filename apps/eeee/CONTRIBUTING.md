@@ -1,6 +1,6 @@
-# Contributing to OSS Product Builder
+# Contributing to Gleave
 
-Thanks for helping improve OSS Product Builder. Contributions should preserve
+Thanks for helping improve Gleave. Contributions should preserve
 the local-first model and the explicit approval and workspace safety boundaries.
 
 ## Development setup

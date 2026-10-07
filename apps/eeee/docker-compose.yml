@@ -3,15 +3,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: oss-product-builder:local
+    image: gleave:local
     ports:
       - "8000:8000"
     environment:
       EXECUTION_MODE: demo
-      DATA_DIR: /app/.oss-builder
+      DATA_DIR: /app/.gleave
       WORKSPACE_ROOT: /app/workspaces
     volumes:
-      - data:/app/.oss-builder
+      - data:/app/.gleave
       - workspaces:/app/workspaces
     restart: unless-stopped
 

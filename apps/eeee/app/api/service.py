@@ -2,18 +2,26 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Callable
 from threading import Event, Thread
 from typing import Callable
 from uuid import uuid4
 
 from app.agent.protocol import AgentRequest, AgentResult, AgentRuntime
+from app.assistant.models import AssistantRequest
+from app.assistant.registry import build_default_registry
+from app.assistant.router import CapabilityRouter
 from app.config import Settings
 from app.coordinator.service import Coordinator
 from app.domain.errors import ApprovalError
 from app.domain.models import CandidateScore, Decision, RequestBrief, RequestSnapshot, Run
 from app.storage.sqlite import SQLiteStore
+from app.trust.gate import TrustGate
 from app.workflow.planner import WorkPlan, build_work_plan
 from app.workspace.artifacts import WorkspaceArtifactWriter
+from app.project_runtime.provisioner import ProjectProvisioner
+from app.contracts import ExecutionEnvelope, ExecutionStatus
+from app.trust.pipeline import TrustPipeline
 
 
 class ApiFlowService:
@@ -32,6 +40,11 @@ class ApiFlowService:
         clock: Callable[[], datetime] | None = None,
         lease_seconds: int = LEASE_SECONDS,
         heartbeat_interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS,
+        capability_router: CapabilityRouter | None = None,
+        project_provisioner: ProjectProvisioner | None = None,
+        trust_gate: TrustGate | None = None,
+        trust_pipeline: TrustPipeline | None = None,
+        event_publisher: Callable[[str, dict[str, object]], object] | None = None,
     ) -> None:
         self.coordinator = coordinator
         self.store = store
@@ -41,8 +54,19 @@ class ApiFlowService:
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self.lease_seconds = lease_seconds
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
+        self.capability_router = capability_router or CapabilityRouter(build_default_registry())
+        self.project_provisioner = project_provisioner or ProjectProvisioner(store)
+        self.trust_gate = trust_gate or TrustGate(None, mode="advisory")
+        self.trust_pipeline = trust_pipeline or TrustPipeline(
+            self.trust_gate, audit_store=store.claimlatch_audits
+        )
+        self.event_publisher = event_publisher
 
     def create_request(self, text: str, workspace: str | None) -> tuple[str, RequestBrief, str]:
+        # `/api/requests` is the legacy project workbench endpoint. The new
+        # `/api/assistant/route` endpoint is the canonical intent-aware entrypoint;
+        # this compatibility path keeps accepting arbitrary project descriptions.
+        self.capability_router.select(AssistantRequest(raw_text=text))
         project_id = f"api-{uuid4().hex}"
         workspace_path = self._resolve_workspace(workspace, project_id)
         workspace_path.mkdir(parents=True, exist_ok=True)
@@ -52,6 +76,13 @@ class ApiFlowService:
             raise RuntimeError("Created request did not produce a request ID")
         request_id = state.request_id
         self.store.save_request_context(request_id, project_id, str(workspace_path))
+        project_brief = self.coordinator.build_project_brief(project_id, request_id)
+        self.project_provisioner.provision(
+            self.store.get_project(project_id),
+            self.store.get_request(request_id),
+            memory_ids=project_brief.retrieved_memory_ids,
+            qa_baseline_ids=project_brief.qa_baseline_ids,
+        )
         run = self.store.create_run(request_id, str(workspace_path))
         return request_id, self.store.get_request(request_id), run.id
 
@@ -89,6 +120,7 @@ class ApiFlowService:
         if not claim.acquired:
             return claim.run
         run = claim.run
+        self._publish("run.execution.started", {"runId": run.id, "requestId": run.request_id})
         stop_heartbeat = Event()
 
         def heartbeat() -> None:
@@ -133,6 +165,43 @@ class ApiFlowService:
                     error=f"Agent runtime returned non-terminal status: {result.status}",
                 )
             events = list(result.events)
+            project_id, _workspace = self.store.get_request_context(run.request_id)
+            project = self.store.get_project(project_id)
+            trust_envelope = ExecutionEnvelope(
+                execution_id=f"{run.id}:agent-result",
+                request_id=run.request_id,
+                project_id=project_id,
+                project_revision=project.revision,
+                capability_id="agent-result",
+                tool_id="api-runtime",
+                actor="EEEE",
+                status=ExecutionStatus.RUNNING,
+                input={"summary": result.summary},
+                evidence_ids=tuple(
+                    str(event.get("evidenceId"))
+                    for event in result.events
+                    if isinstance(event, dict) and isinstance(event.get("evidenceId"), str)
+                ),
+            )
+            trust = self.trust_pipeline.verify_claim(trust_envelope)
+            events.append(
+                {
+                    "type": "claimlatch",
+                    "decision": trust.decision,
+                    "reason": trust.reason,
+                    "profileVersion": self.trust_gate.profile_version,
+                    "engineVersion": self.trust_gate.engine_version,
+                }
+            )
+            if trust.decision == "BLOCKED":
+                result = AgentResult(
+                    status="failed",
+                    summary=result.summary,
+                    events=result.events,
+                    changed_files=result.changed_files,
+                    test_commands=result.test_commands,
+                    error=f"ClaimLatch blocked agent result release: {trust.reason}",
+                )
             if result.test_commands and not any(
                 str(event.get("type", "")).lower() == "verification" for event in result.events
             ):
@@ -172,6 +241,10 @@ class ApiFlowService:
                 run.id, owner_token, claim.generation, result.status,
                 events, artifacts, result.error, self._clock,
             )
+            self._publish(
+                "run.execution.completed",
+                {"runId": run.id, "requestId": run.request_id, "status": result.status},
+            )
             return completed if completed is not None else self.store.get_run(run_id)
         except Exception:
             try:
@@ -185,6 +258,10 @@ class ApiFlowService:
         finally:
             stop_heartbeat.set()
             heartbeat_thread.join()
+
+    def _publish(self, kind: str, payload: dict[str, object]) -> None:
+        if self.event_publisher is not None:
+            self.event_publisher(kind, payload)
 
     def get_run(self, run_id: str) -> Run:
         return self.store.get_run(run_id)

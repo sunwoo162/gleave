@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.coordinator.fake_worker import DeterministicFakeWorker
+from app.contracts import ExecutionEnvelope, ExecutionStatus
 from app.domain.errors import ApprovalError
 from app.domain.models import (
     CandidateScore,
@@ -22,6 +23,8 @@ from app.memory.store import MemoryStore
 from app.oss.github_client import ResearchError
 from app.oss.researcher import GitHubResearcher
 from app.storage.sqlite import SQLiteStore
+from app.trust.gate import TrustGate
+from app.trust.pipeline import TrustPipeline
 from app.workspace.artifacts import WorkspaceArtifactWriter
 from app.workflow.approvals import ApprovalService
 from app.workflow.planner import parse_request
@@ -36,6 +39,7 @@ class Coordinator:
         researcher: GitHubResearcher | None = None,
         verifier: WorkspaceVerifier | None = None,
         memory_store: MemoryStore | None = None,
+        trust_gate: TrustGate | None = None,
     ):
         self.store = store
         self.worker = worker or DeterministicFakeWorker()
@@ -46,6 +50,11 @@ class Coordinator:
         self.memory = memory_store or MemoryStore(store.path)
         self.memory_pipeline = OutcomeMemoryPipeline(self.memory)
         self.claimlatch_audits = store.claimlatch_audits
+        self.trust_gate = trust_gate
+        self.trust_pipeline = (
+            TrustPipeline(trust_gate, audit_store=store.claimlatch_audits)
+            if trust_gate is not None else None
+        )
 
     def record_project_outcome(
         self, outcome_report: ProjectOutcomeReportV1
@@ -61,7 +70,82 @@ class Coordinator:
                 "Cannot ingest project outcome: stale project revision "
                 f"{outcome_report.project_revision}; current is {project.revision}"
             )
+        if self.trust_pipeline is not None:
+            envelope = ExecutionEnvelope(
+                execution_id=f"{outcome_report.project_id}:outcome",
+                request_id=outcome_report.request_id,
+                project_id=outcome_report.project_id,
+                project_revision=outcome_report.project_revision,
+                capability_id="project-outcome",
+                tool_id="iseol",
+                actor="ISEOL",
+                status=ExecutionStatus.RUNNING,
+                input={"status": outcome_report.status},
+                evidence_ids=tuple(
+                    item for item in outcome_report.qa_report.get("evidenceIds", [])
+                    if isinstance(item, str) and item.strip()
+                ),
+            )
+            trust = self.trust_pipeline.memory_promotion_gate(
+                outcome_report, envelope, outcome_report.qa_report
+            )
+            if trust.decision != "PASS":
+                raise ApprovalError(f"ClaimLatch blocked memory promotion: {trust.reason}")
         return self.memory_pipeline.ingest(outcome_report)
+
+    def record_verified_project_outcome(
+        self,
+        outcome_report: ProjectOutcomeReportV1,
+        *,
+        actor: str = "EEEE Verified Outcome",
+    ) -> list[MemoryRecord]:
+        """Persist and activate only an outcome that passed every gate.
+
+        ``record_project_outcome`` intentionally leaves records as candidates
+        for the explicit API promotion flow. ISEOL's release path uses this
+        method only after the outcome has passed deterministic QA and
+        ClaimLatch, so verified patterns become available to the next project.
+        """
+
+        records = self.record_project_outcome(outcome_report)
+        promoted: list[MemoryRecord] = []
+        for record in records:
+            promoted.append(
+                self.memory.promote(
+                    record.id,
+                    actor=actor,
+                    evidence_ids=list(dict.fromkeys([
+                        *record.evidence_ids,
+                        *record.verification_ids,
+                    ])),
+                )
+            )
+        return promoted
+
+    def promote_memory(
+        self, memory_id: str, *, actor: str, evidence_ids: list[str]
+    ) -> MemoryRecord:
+        record = self.memory.get(memory_id)
+        try:
+            project = self.store.get_project(record.source_project_id)
+        except KeyError:
+            project = None
+        if project is not None and self.trust_gate is not None:
+            trust = self.trust_gate.verify_action(
+                subject_id=f"{memory_id}:promotion",
+                project_id=project.id,
+                project_revision=project.revision,
+                action="memory.promote",
+                payload={"memoryId": memory_id, "evidenceIds": list(evidence_ids)},
+            )
+            if trust.decision != "PASS":
+                raise ApprovalError(f"ClaimLatch blocked memory promotion: {trust.reason}")
+        return self.memory.promote(memory_id, actor=actor, evidence_ids=evidence_ids)
+
+    def remember_user_preference(
+        self, key: str, value: str, *, scope: dict[str, object] | None = None
+    ) -> MemoryRecord:
+        return self.memory.save_user_preference(key, value, scope=scope)
 
     def build_project_brief(self, project_id: str, request_id: str) -> ProjectBriefV1:
         """Retrieve verified memory before ISEOL decomposes the next project."""
@@ -75,6 +159,21 @@ class Coordinator:
             for memory in memories
             if memory.kind in {"qa_rule", "regression_rule"}
         ]
+        verified_memories = [
+            {
+                "id": memory.id,
+                "kind": memory.kind,
+                "content": memory.content,
+                "scope": memory.scope,
+                "confidence": memory.confidence,
+                "verificationIds": memory.verification_ids,
+            }
+            for memory in memories
+        ]
+        user_preferences = {
+            key: record.content
+            for key, record in self.memory.search_user_preferences().items()
+        }
         return ProjectBriefV1(
             schema_version=1,
             project_id=project.id,
@@ -82,7 +181,11 @@ class Coordinator:
             user_goal=request.goal,
             scope=[request.target_type, *request.acceptance_criteria],
             constraints=request.constraints,
-            preferences={},
+            preferences={
+                "canonicalIntent": request.canonical_intent,
+                "verifiedMemories": verified_memories,
+                "userPreferences": user_preferences,
+            },
             schedule={},
             retrieved_memory_ids=memory_ids,
             qa_baseline_ids=qa_baseline_ids,

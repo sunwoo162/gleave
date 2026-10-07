@@ -23,6 +23,7 @@ def _record(*, payload_hash: str = "payload-hash") -> ClaimLatchAuditRecord:
         policy_version="policy-v1",
         adapter_version="adapter-v1",
         claim_latch_version="0.3.86",
+        claim_latch_profile_version="claimlatch-v0.2.0",
         request_payload={"draft": "The tests pass."},
         envelope={"decision": "PASS", "claimLatchReportId": "report-1"},
         created_at=datetime(2026, 10, 6, tzinfo=timezone.utc),

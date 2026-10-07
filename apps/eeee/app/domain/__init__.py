@@ -1,1 +1,1 @@
-"""Typed domain models for OSS Product Builder."""
+"""Typed domain models for Gleave."""

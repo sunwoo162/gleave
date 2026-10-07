@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 
 
-FORBIDDEN_MARKERS = (".env", ".oss-builder", "workspaces", ".pytest_cache")
+FORBIDDEN_MARKERS = (".env", ".gleave", ".oss-builder", "workspaces", ".pytest_cache")
 
 
 def _contains_forbidden_state(names: list[str]) -> bool:
@@ -29,7 +29,7 @@ def validate_artifacts(dist_dir: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate OSS Product Builder release artifacts")
+    parser = argparse.ArgumentParser(description="Validate Gleave release artifacts")
     parser.add_argument("dist_dir", type=Path)
     args = parser.parse_args()
     validate_artifacts(args.dist_dir)

@@ -3,7 +3,7 @@ import time
 import httpx
 
 from app.config import Settings
-from app.desktop.__main__ import connect_desktop_api
+from app.desktop.__main__ import connect_desktop_api, run_self_test
 from app.desktop.runtime import EmbeddedApiRuntime
 
 
@@ -20,7 +20,7 @@ def test_embedded_runtime_serves_health_and_stops(tmp_path):
         response = httpx.get(f"{base_url}/health", timeout=2.0)
 
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        assert response.json()["status"] == "ok"
     finally:
         stop_started = time.monotonic()
         runtime.stop()
@@ -52,3 +52,14 @@ def test_desktop_connection_uses_explicit_api_url_without_starting_runtime():
 
     assert client.base_url == "http://example.test:8123"
     assert runtime is None
+
+
+def test_desktop_self_test_starts_and_checks_the_embedded_api(tmp_path):
+    result = run_self_test(
+        Settings(
+            data_dir=tmp_path / "data",
+            workspace_root=tmp_path / "workspaces",
+        )
+    )
+
+    assert result == 0

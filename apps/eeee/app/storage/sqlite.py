@@ -12,6 +12,8 @@ from app.harness.state import AgentTask, ProjectState
 from app.domain.errors import AlreadyApprovedError, ApprovalError, CandidateSetChangedError
 from app.integrations.claimlatch_audit import ClaimLatchAuditStore
 from app.memory.store import MemoryStore
+from app.project_runtime.models import ProjectDocumentRecord, ProjectEvidenceRecord, ProjectProfile
+from app.planning.models import PlanningArtifact, PlanningDecision, PlanningHandoff, PlanningSession
 from app.domain.models import (
     CandidateScore,
     Decision,
@@ -256,6 +258,38 @@ class SQLiteStore:
                     id TEXT PRIMARY KEY, name TEXT NOT NULL, workspace TEXT NOT NULL,
                     revision TEXT NOT NULL, state TEXT NOT NULL, active_task_id TEXT
                 );
+                CREATE TABLE IF NOT EXISTS project_profiles (
+                    project_id TEXT PRIMARY KEY, project_revision TEXT NOT NULL,
+                    profile_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS planning_sessions (
+                    session_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, project_revision TEXT NOT NULL,
+                    revision INTEGER NOT NULL, status TEXT NOT NULL, session_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS planning_artifacts (
+                    artifact_id TEXT PRIMARY KEY, planning_session_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL, project_revision TEXT NOT NULL, artifact_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS planning_decisions (
+                    position INTEGER PRIMARY KEY AUTOINCREMENT, decision_id TEXT NOT NULL UNIQUE,
+                    planning_session_id TEXT NOT NULL, project_id TEXT NOT NULL,
+                    project_revision TEXT NOT NULL, decision_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS planning_handoffs (
+                    handoff_id TEXT PRIMARY KEY, planning_session_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL, project_revision TEXT NOT NULL, handoff_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS project_documents (
+                    project_id TEXT NOT NULL, provider TEXT NOT NULL,
+                    project_revision TEXT NOT NULL, document_json TEXT NOT NULL,
+                    PRIMARY KEY (project_id, provider)
+                );
+                CREATE TABLE IF NOT EXISTS project_evidence (
+                    project_id TEXT NOT NULL, evidence_type TEXT NOT NULL,
+                    reference TEXT NOT NULL, project_revision TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    PRIMARY KEY (project_id, evidence_type, reference)
+                );
                 CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, request_id TEXT NOT NULL,
                     state TEXT NOT NULL, message TEXT NOT NULL, required_action TEXT,
@@ -270,6 +304,33 @@ class SQLiteStore:
                     revision TEXT NOT NULL, status TEXT NOT NULL, summary TEXT NOT NULL,
                     checks_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS execution_envelopes (
+                    execution_id TEXT PRIMARY KEY, request_id TEXT NOT NULL,
+                    project_id TEXT, project_revision TEXT, capability_id TEXT NOT NULL,
+                    tool_id TEXT NOT NULL, status TEXT NOT NULL, envelope_json TEXT NOT NULL,
+                    started_at TEXT NOT NULL, completed_at TEXT,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS execution_events (
+                    cursor INTEGER PRIMARY KEY AUTOINCREMENT, execution_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL, project_id TEXT, project_revision TEXT,
+                    event_type TEXT NOT NULL, event_json TEXT NOT NULL, published_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS project_activity_events (
+                    cursor INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT NOT NULL,
+                    project_revision TEXT NOT NULL, event_json TEXT NOT NULL,
+                    event_hash TEXT NOT NULL, occurred_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS plugin_registrations (
+                    plugin_id TEXT PRIMARY KEY, manifest_version TEXT NOT NULL,
+                    status TEXT NOT NULL, manifest_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, removed_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS plugin_audit_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, plugin_id TEXT NOT NULL,
+                    action TEXT NOT NULL, status TEXT NOT NULL, manifest_version TEXT NOT NULL,
+                    event_json TEXT NOT NULL, occurred_at TEXT NOT NULL
+                );
                 """
             )
             run_columns = {
@@ -282,6 +343,22 @@ class SQLiteStore:
             connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_request_id ON runs (request_id)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_status ON runs (status)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs (created_at)")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_execution_envelopes_project_revision "
+                "ON execution_envelopes (project_id, project_revision, started_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_execution_events_project_cursor "
+                "ON execution_events (project_id, project_revision, cursor)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_plugin_registrations_status "
+                "ON plugin_registrations (status, removed_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_plugin_audit_events_plugin "
+                "ON plugin_audit_events (plugin_id, id)"
+            )
         # EEEE memory intentionally shares the durable state database so a
         # restart cannot separate project state from the evidence-backed memory.
         MemoryStore(self.path).init()
@@ -349,6 +426,22 @@ class SQLiteStore:
                 "task_json = excluded.task_json",
                 (task.id, project_id, task.model_dump_json()),
             )
+            revision = task.project_revision
+            if revision is None:
+                revision = connection.execute(
+                    "SELECT revision FROM projects WHERE id = ?", (project_id,)
+                ).fetchone()
+                revision = revision[0] if revision is not None else None
+            if revision is not None:
+                self._append_project_map_event(
+                    connection, project_id, revision,
+                    {"eventType": "task.lifecycle", "executionId": task.id,
+                     "requestId": task.id, "projectId": project_id,
+                     "projectRevision": revision,
+                     "payload": {"source": "harness", "taskId": task.id,
+                                  "status": task.status},
+                     "publishedAt": datetime.now(timezone.utc).isoformat()},
+                )
 
     def get_harness_task(self, task_id: str) -> AgentTask:
         with self._connect() as connection:
@@ -450,6 +543,192 @@ class SQLiteStore:
             raise KeyError(f"Project not found: {project_id}")
         return _project_from_row(row)
 
+    def save_project_profile(self, profile: ProjectProfile) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO project_profiles (project_id, project_revision, profile_json) "
+                "VALUES (?, ?, ?) ON CONFLICT(project_id) DO UPDATE SET "
+                "project_revision = excluded.project_revision, profile_json = excluded.profile_json",
+                (profile.project_id, profile.project_revision, profile.model_dump_json()),
+            )
+
+    def get_project_profile(self, project_id: str) -> ProjectProfile:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT profile_json FROM project_profiles WHERE project_id = ?", (project_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Project profile not found: {project_id}")
+        return ProjectProfile.model_validate_json(row["profile_json"])
+
+    def _ensure_planning_revision(self, project_id: str, project_revision: str) -> None:
+        from app.runtime.store import StaleProjectRevision
+
+        with self._connect() as connection:
+            row = connection.execute("SELECT revision FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if row is None:
+            raise KeyError(f"Project not found: {project_id}")
+        if row["revision"] != project_revision:
+            raise StaleProjectRevision(f"stale project revision for {project_id}: {project_revision}")
+
+    def _ensure_activity_revision(self, project_id: str, project_revision: str) -> None:
+        self._ensure_planning_revision(project_id, project_revision)
+
+    def save_planning_session(self, session: PlanningSession) -> None:
+        self._ensure_planning_revision(session.project_id, session.project_revision)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO planning_sessions "
+                "(session_id, project_id, project_revision, revision, status, session_json) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET "
+                "revision = excluded.revision, status = excluded.status, session_json = excluded.session_json",
+                (
+                    session.session_id, session.project_id, session.project_revision,
+                    session.revision, session.status, session.model_dump_json(),
+                ),
+            )
+
+    def get_planning_session(self, session_id: str) -> PlanningSession:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT session_json FROM planning_sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Planning session not found: {session_id}")
+        return PlanningSession.model_validate_json(row["session_json"])
+
+    def list_planning_sessions(self, project_id: str, project_revision: str) -> list[PlanningSession]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT session_json FROM planning_sessions WHERE project_id = ? AND project_revision = ? "
+                "ORDER BY rowid", (project_id, project_revision),
+            ).fetchall()
+        return [PlanningSession.model_validate_json(row["session_json"]) for row in rows]
+
+    def save_planning_artifact(self, artifact: PlanningArtifact) -> None:
+        self._ensure_planning_revision(artifact.project_id, artifact.project_revision)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO planning_artifacts "
+                "(artifact_id, planning_session_id, project_id, project_revision, artifact_json) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(artifact_id) DO UPDATE SET artifact_json = excluded.artifact_json",
+                (
+                    artifact.artifact_id, artifact.planning_session_id, artifact.project_id,
+                    artifact.project_revision, artifact.model_dump_json(),
+                ),
+            )
+
+    def list_planning_artifacts(self, session_id: str) -> list[PlanningArtifact]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT artifact_json FROM planning_artifacts WHERE planning_session_id = ? ORDER BY artifact_id",
+                (session_id,),
+            ).fetchall()
+        return [PlanningArtifact.model_validate_json(row["artifact_json"]) for row in rows]
+
+    def append_planning_decision(self, decision: PlanningDecision) -> None:
+        self._ensure_planning_revision(decision.project_id, decision.project_revision)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO planning_decisions "
+                "(decision_id, planning_session_id, project_id, project_revision, decision_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    decision.decision_id, decision.planning_session_id, decision.project_id,
+                    decision.project_revision, decision.model_dump_json(),
+                ),
+            )
+
+    def list_planning_decisions(self, session_id: str) -> list[PlanningDecision]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT decision_json FROM planning_decisions "
+                "WHERE planning_session_id = ? ORDER BY position", (session_id,),
+            ).fetchall()
+        return [PlanningDecision.model_validate_json(row["decision_json"]) for row in rows]
+
+    def save_planning_handoff(self, handoff: PlanningHandoff) -> None:
+        self._ensure_planning_revision(handoff.project_id, handoff.project_revision)
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO planning_handoffs "
+                "(handoff_id, planning_session_id, project_id, project_revision, handoff_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    handoff.handoff_id, handoff.planning_session_id, handoff.project_id,
+                    handoff.project_revision, handoff.model_dump_json(),
+                ),
+            )
+
+    def get_planning_handoff(self, handoff_id: str) -> PlanningHandoff:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT handoff_json FROM planning_handoffs WHERE handoff_id = ?", (handoff_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Planning handoff not found: {handoff_id}")
+        return PlanningHandoff.model_validate_json(row["handoff_json"])
+
+    def save_project_document(self, document: ProjectDocumentRecord) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO project_documents "
+                "(project_id, provider, project_revision, document_json) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(project_id, provider) DO UPDATE SET "
+                "project_revision = excluded.project_revision, document_json = excluded.document_json",
+                (
+                    document.project_id,
+                    document.provider,
+                    document.project_revision,
+                    document.model_dump_json(),
+                ),
+            )
+
+    def get_project_document(self, project_id: str, provider: str) -> ProjectDocumentRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT document_json FROM project_documents WHERE project_id = ? AND provider = ?",
+                (project_id, provider),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Project document not found: {project_id}/{provider}")
+        return ProjectDocumentRecord.model_validate_json(row["document_json"])
+
+    def save_project_evidence(self, evidence: ProjectEvidenceRecord) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO project_evidence "
+                "(project_id, evidence_type, reference, project_revision, evidence_json) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(project_id, evidence_type, reference) DO UPDATE SET "
+                "project_revision = excluded.project_revision, evidence_json = excluded.evidence_json",
+                (
+                    evidence.project_id,
+                    evidence.evidence_type,
+                    evidence.reference,
+                    evidence.project_revision,
+                    evidence.model_dump_json(),
+                ),
+            )
+
+    def get_project_evidence(
+        self, project_id: str, evidence_type: str, reference: str
+    ) -> ProjectEvidenceRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT evidence_json FROM project_evidence "
+                "WHERE project_id = ? AND evidence_type = ? AND reference LIKE ?",
+                (project_id, evidence_type, f"%:{reference}"),
+            ).fetchone()
+            if row is None:
+                row = connection.execute(
+                    "SELECT evidence_json FROM project_evidence "
+                    "WHERE project_id = ? AND evidence_type = ? AND json_extract(evidence_json, '$.payload.headSha') = ?",
+                    (project_id, evidence_type, reference),
+                ).fetchone()
+        if row is None:
+            raise KeyError(f"Project evidence not found: {project_id}/{evidence_type}/{reference}")
+        return ProjectEvidenceRecord.model_validate_json(row["evidence_json"])
+
     def update_project_revision(self, project_id: str, revision: str) -> Project:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -512,6 +791,15 @@ class SQLiteStore:
                 "UPDATE projects SET state = ?, active_task_id = ? WHERE id = ?",
                 (task.state.value, task.id, project_id),
             )
+            self._append_project_map_event(
+                connection, project_id, revision,
+                {"eventType": "task.lifecycle", "executionId": task.id,
+                 "requestId": task.request_id, "projectId": project_id,
+                 "projectRevision": revision,
+                 "payload": {"source": "coordinator", "taskId": task.id,
+                              "status": task.state.value},
+                 "publishedAt": datetime.now(timezone.utc).isoformat()},
+            )
         return task
 
     def get_task(self, task_id: str) -> TaskRecord:
@@ -566,7 +854,33 @@ class SQLiteStore:
                 "UPDATE projects SET state = ?, active_task_id = ? WHERE id = ?",
                 (task.state.value, task.id, task.project_id),
             )
+            self._append_project_map_event(
+                connection, task.project_id, task.revision,
+                {"eventType": "task.lifecycle", "executionId": task.id,
+                 "requestId": task.request_id, "projectId": task.project_id,
+                 "projectRevision": task.revision,
+                 "payload": {"source": "coordinator", "taskId": task.id,
+                              "status": task.state.value},
+                 "publishedAt": datetime.now(timezone.utc).isoformat()},
+            )
         return task
+
+    @staticmethod
+    def _append_project_map_event(connection: sqlite3.Connection, project_id: str,
+                                   project_revision: str, event: dict[str, object]) -> int:
+        cursor = connection.execute(
+            "INSERT INTO execution_events "
+            "(execution_id, request_id, project_id, project_revision, event_type, event_json, published_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (event["executionId"], event["requestId"], project_id, project_revision,
+             event["eventType"], json.dumps(event), event["publishedAt"]),
+        ).lastrowid
+        published = {**event, "cursor": cursor}
+        connection.execute(
+            "UPDATE execution_events SET event_json = ? WHERE cursor = ?",
+            (json.dumps(published), cursor),
+        )
+        return cursor
 
     def append_task_event(self, task_id: str, event: dict[str, object]) -> None:
         with self._connect() as connection:

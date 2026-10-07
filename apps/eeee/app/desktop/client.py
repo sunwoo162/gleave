@@ -25,6 +25,37 @@ class PetApiClient:
     def get_state(self) -> dict[str, object]:
         return self._request("GET", f"/projects/{self.project_id}/state")
 
+    def get_health(self) -> dict[str, object]:
+        return self._request("GET", "/health")
+
+    def get_desktop_state(self, project_id: str | None = None) -> dict[str, object]:
+        kwargs: dict[str, object] = {}
+        if project_id is not None:
+            kwargs["params"] = {"projectId": project_id}
+        return self._request("GET", "/api/desktop/state", **kwargs)
+
+    def get_desktop_events(self, cursor: int = 0) -> dict[str, object]:
+        return self._request(
+            "GET", "/api/desktop/events", params={"cursor": cursor}
+        )
+
+    def route_assistant(
+        self, text: str, workspace: str | None = None
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {"text": text}
+        if workspace is not None:
+            payload["workspace"] = workspace
+        return self._request("POST", "/api/assistant/route", json=payload)
+
+    def open_project(self, project_id: str) -> dict[str, object]:
+        """Load the durable organization map for a project in the Desktop view."""
+        if not project_id.strip():
+            raise ValueError("project_id is required")
+        return self._request("GET", f"/api/projects/{project_id}/map")
+
+    def issue_pairing_code(self) -> dict[str, object]:
+        return self._request("POST", "/api/desktop/pairing/code")
+
     def create_request(self, text: str) -> dict[str, object]:
         return self._request(
             "POST",
@@ -53,3 +84,7 @@ class PetApiClient:
         return self._request(
             "POST", f"/projects/{self.project_id}/tasks/{task_id}/retry"
         )
+
+
+# Backwards-compatible name for the canonical Desktop HTTP client.
+DesktopApiClient = PetApiClient

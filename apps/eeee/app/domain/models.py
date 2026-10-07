@@ -11,6 +11,7 @@ class RequestBrief(BaseModel):
     acceptance_criteria: list[str]
     needs_confirmation: bool = False
     uncertainties: list[str] = Field(default_factory=list)
+    canonical_intent: str = "project.unknown"
 
 
 class RepositorySnapshot(BaseModel):

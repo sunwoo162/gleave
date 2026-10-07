@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OSS Product Builder</title>
+    <title>Gleave</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/styles.css" />
     <script src="/static/app.js" defer></script>
@@ -11,39 +11,95 @@
   <body>
     <main class="shell">
       <header class="hero">
-        <p class="eyebrow">LOCAL-FIRST BUILD WORKBENCH</p>
-        <h1>OSS Product Builder</h1>
-        <p>Turn a product idea into an evidence-backed, approved, and verified workspace run.</p>
+        <div class="hero-heading">
+          <div>
+            <p class="eyebrow" id="eyebrow">로컬 우선 개발 워크스페이스</p>
+            <h1>Gleave</h1>
+          </div>
+          <label class="language-picker" for="language-select">
+            <span id="language-label">언어</span>
+            <select id="language-select" aria-label="언어">
+              <option value="ko" selected>한국어</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+        </div>
+        <p>EEEE가 상황에 맞는 도구를 선택해 아이디어를 검증된 실행으로 나눠 처리합니다.</p>
       </header>
+
+      <section class="panel assistant-surface" aria-labelledby="assistant-heading">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">EEEE ASSISTANT</p>
+            <h2 id="assistant-heading">무엇을 해드릴까요?</h2>
+          </div>
+          <span id="assistant-status" class="status" role="status" aria-live="polite">대기 중</span>
+        </div>
+        <div id="capability-cards" class="capability-cards" aria-label="사용 가능한 기능">
+          <button class="capability-card selected" type="button" data-capability="project-execution">
+            <strong>프로젝트 만들기</strong><span>한 문장으로 앱을 만들고 진행 현황을 확인합니다.</span>
+          </button>
+          <button class="capability-card" type="button" data-capability="personal-secretary">
+            <strong>일정·리마인더</strong><span>개인 일정과 다음 할 일을 정리합니다.</span>
+          </button>
+          <button class="capability-card" type="button" data-capability="knowledge-documents">
+            <strong>기억·문서</strong><span>검증된 기록과 문서를 찾아 연결합니다.</span>
+          </button>
+        </div>
+        <form id="project-request-form" class="project-request-form">
+          <label for="project-request">만들고 싶은 것을 한 문장으로 적어주세요</label>
+          <div class="project-request-row">
+            <input id="project-request" type="text" required placeholder="예: Todo 앱 만들어줘" />
+            <button type="submit">만들기</button>
+          </div>
+          <input id="project-workspace" type="hidden" />
+        </form>
+        <p id="project-request-status" class="muted" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="project-map" class="panel project-map-panel" aria-labelledby="project-map-heading" hidden>
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">PROJECT RUNTIME</p>
+            <h2 id="project-map-heading">프로젝트 진행 맵</h2>
+          </div>
+          <span id="project-map-status" class="status" role="status" aria-live="polite">불러오는 중</span>
+        </div>
+        <div id="project-map-summary" class="project-map-summary"></div>
+        <div id="project-map-nodes" class="project-map-canvas" aria-live="polite"></div>
+        <aside id="project-map-details" class="project-map-details" aria-label="선택한 작업 상세">
+          <p class="muted">작업 노드를 선택하면 커밋, QA, ClaimLatch, 파일과 문제 해결 기록이 표시됩니다.</p>
+        </aside>
+      </section>
 
       <section class="panel" aria-labelledby="request-heading">
         <div class="panel-heading">
-          <h2 id="request-heading">1. Describe the product</h2>
-          <span id="status" class="status" role="status" aria-live="polite">Ready</span>
+          <h2 id="request-heading">1. 만들고 싶은 것 설명</h2>
+          <span id="status" class="status" role="status" aria-live="polite">준비됨</span>
         </div>
         <form id="request-form">
-          <label for="request-text">Product request</label>
-          <textarea id="request-text" required placeholder="Build a web app for..."></textarea>
-          <label for="workspace">Workspace inside the configured local root</label>
-          <input id="workspace" type="text" placeholder="Optional: C:\\...\\workspaces\\my-app" />
-          <button type="submit">Create request</button>
+          <label for="request-text">프로젝트 요청</label>
+          <textarea id="request-text" required placeholder="예: 일정과 작업을 관리하는 웹 앱을 만들어줘"></textarea>
+          <label for="workspace">설정된 로컬 루트 안의 워크스페이스</label>
+          <input id="workspace" type="text" placeholder="선택 사항: C:\\...\\workspaces\\my-app" />
+          <button type="submit">요청 만들기</button>
         </form>
         <p id="brief" class="muted"></p>
         <div class="snapshot-columns">
           <div>
-            <h3>Work plan</h3>
+            <h3 id="work-plan-heading">작업 계획</h3>
             <ol id="work-plan" class="snapshot-list"></ol>
           </div>
           <div>
-            <h3>Approval history</h3>
+            <h3 id="approval-history-heading">승인 기록</h3>
             <ol id="decision-events" class="snapshot-list"></ol>
           </div>
         </div>
         <form id="restore-form" class="restore-form">
-          <label for="restore-request-id">Restore saved request</label>
+          <label for="restore-request-id" data-en-label="Restore saved request">저장된 요청 복원</label>
           <div class="inline-form">
-            <input id="restore-request-id" type="text" placeholder="Request ID" />
-            <button type="submit">Restore</button>
+            <input id="restore-request-id" type="text" placeholder="요청 ID" />
+            <button type="submit">복원</button>
           </div>
         </form>
         <p id="restore-status" class="muted" role="status" aria-live="polite"></p>
@@ -51,77 +107,77 @@
 
       <section class="panel" aria-labelledby="research-heading">
         <div class="panel-heading">
-          <h2 id="research-heading">2. Compare OSS candidates</h2>
-          <button id="research-button" type="button" disabled>Research</button>
+          <h2 id="research-heading">2. 오픈소스 후보 비교</h2>
+          <button id="research-button" type="button" disabled>조사</button>
         </div>
-        <h3 id="candidate-selection-heading">Candidate evidence and selection</h3>
+        <h3 id="candidate-selection-heading">후보 근거와 선택</h3>
         <div id="candidates" class="candidate-grid" aria-labelledby="candidate-selection-heading" aria-live="polite" aria-busy="false">
-          <p class="muted">Create a request to begin research.</p>
+          <p class="muted">요청을 만들면 조사가 시작됩니다.</p>
         </div>
-        <button id="approve-button" type="button" disabled>Approve selected candidates</button>
+        <button id="approve-button" type="button" disabled>선택한 후보 승인</button>
       </section>
 
       <section class="panel" aria-labelledby="design-heading">
         <div class="panel-heading">
-          <h2 id="design-heading">Design references</h2>
-          <span id="design-status" class="status" role="status" aria-live="polite">Provenance first</span>
+          <h2 id="design-heading">디자인 레퍼런스</h2>
+          <span id="design-status" class="status" role="status" aria-live="polite">출처 우선</span>
         </div>
         <form id="design-form" aria-busy="false">
-          <label for="reference-url">Reference URL</label>
+          <label for="reference-url">레퍼런스 URL</label>
           <input id="reference-url" type="url" required placeholder="https://example.com/inspiration" />
-          <label for="reference-keywords">Keywords</label>
-          <input id="reference-keywords" type="text" placeholder="dashboard, sidebar, cards" />
-          <label for="reference-target">Target type</label>
+          <label for="reference-keywords">키워드</label>
+          <input id="reference-keywords" type="text" placeholder="대시보드, 사이드바, 카드" />
+          <label for="reference-target">대상 유형</label>
           <input id="reference-target" type="text" value="web_app" required />
-          <button id="collect-reference-button" type="submit">Collect reference pack</button>
+          <button id="collect-reference-button" type="submit" data-en-label="Collect reference pack">레퍼런스 팩 수집</button>
         </form>
         <div id="references" class="reference-list" aria-label="Design references" aria-live="polite"></div>
         <p id="tokens" class="code-panel" aria-label="Design tokens" aria-live="polite"></p>
         <p id="attribution" class="muted" aria-label="Attribution" aria-live="polite"></p>
         <form id="visual-form" class="visual-form" aria-busy="false">
-          <label for="visual-url">Local app URL for visual verification</label>
+          <label for="visual-url">시각 검증용 로컬 앱 URL</label>
           <input id="visual-url" type="url" placeholder="http://127.0.0.1:8000" />
-          <label for="visual-baseline">Baseline screenshot path</label>
+          <label for="visual-baseline">기준 스크린샷 경로</label>
           <input id="visual-baseline" type="text" placeholder="C:\\...\\baseline.png" />
-          <button id="verify-visual-button" type="submit">Verify local screenshot</button>
+          <button id="verify-visual-button" type="submit">로컬 스크린샷 검증</button>
         </form>
-        <p id="visual-status" class="muted" role="status" aria-live="polite">No visual comparison run yet.</p>
+          <p id="visual-status" class="muted" role="status" aria-live="polite">아직 시각 비교를 실행하지 않았습니다.</p>
       </section>
 
       <section class="panel" aria-labelledby="run-heading">
         <div class="panel-heading">
-          <h2 id="run-heading">3. Execute and verify</h2>
-          <button id="run-button" type="button" disabled>Run approved task</button>
-          <button id="retry-button" type="button" disabled>Retry unavailable run</button>
+          <h2 id="run-heading">3. 실행과 검증</h2>
+          <button id="run-button" type="button" disabled>승인한 작업 실행</button>
+          <button id="retry-button" type="button" disabled>실행할 수 없던 작업 재시도</button>
         </div>
-        <h3 id="recent-runs-heading">Recent runs</h3>
-        <p id="recent-runs-status" class="muted" role="status" aria-live="polite">Loading saved runs…</p>
+        <h3 id="recent-runs-heading">최근 실행</h3>
+        <p id="recent-runs-status" class="muted" role="status" aria-live="polite">저장된 실행을 불러오는 중…</p>
         <div class="recent-run-filters">
           <div class="recent-run-filter">
-            <label for="recent-run-search">Search by request or run ID</label>
-            <input id="recent-run-search" type="search" placeholder="Search IDs" autocomplete="off" />
+            <label for="recent-run-search">요청 또는 실행 ID로 검색</label>
+            <input id="recent-run-search" type="search" placeholder="ID 검색" autocomplete="off" />
           </div>
           <div class="recent-run-filter">
-            <label for="recent-run-status-filter">Filter by status</label>
+            <label for="recent-run-status-filter">상태로 필터</label>
             <select id="recent-run-status-filter">
-              <option value="all">All statuses</option>
-              <option value="created">Created</option>
-              <option value="running">Running</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-              <option value="unavailable">Unavailable</option>
+              <option value="all">모든 상태</option>
+              <option value="created">생성됨</option>
+              <option value="running">실행 중</option>
+              <option value="completed">완료됨</option>
+              <option value="failed">실패</option>
+              <option value="unavailable">사용 불가</option>
             </select>
           </div>
           <div class="recent-run-filter">
-            <label for="recent-run-created-after">Created after (local time)</label>
+            <label for="recent-run-created-after">생성 시작 시각(현지 시간)</label>
             <input id="recent-run-created-after" type="datetime-local" step="1" />
           </div>
           <div class="recent-run-filter">
-            <label for="recent-run-created-before">Created before (local time)</label>
+            <label for="recent-run-created-before">생성 종료 시각(현지 시간)</label>
             <input id="recent-run-created-before" type="datetime-local" step="1" />
           </div>
           <div class="recent-run-filter">
-            <label for="recent-run-page-size">Runs per page</label>
+            <label for="recent-run-page-size">페이지당 실행 수</label>
             <select id="recent-run-page-size">
               <option value="25">25</option>
               <option value="50" selected>50</option>
@@ -129,22 +185,22 @@
             </select>
           </div>
           <div class="recent-run-filter">
-            <label for="recent-run-sort">Sort runs</label>
+            <label for="recent-run-sort">실행 정렬</label>
             <select id="recent-run-sort">
-              <option value="newest" selected>Newest first</option>
-              <option value="oldest">Oldest first</option>
+              <option value="newest" selected>최신순</option>
+              <option value="oldest">오래된 순</option>
             </select>
           </div>
           <div class="recent-run-actions">
-            <button id="refresh-recent-runs" type="button">Refresh runs</button>
+            <button id="refresh-recent-runs" type="button">실행 새로고침</button>
             <button id="clear-recent-run-filters" class="recent-run-clear" type="button">
-              Clear filters
+              필터 초기화
             </button>
           </div>
         </div>
         <ol id="recent-runs" class="run-history" aria-label="Recent runs"></ol>
         <button id="load-more-runs" type="button" hidden>Load more runs</button>
-        <h3>Run history</h3>
+        <h3 id="run-history-heading">실행 기록</h3>
         <ol id="run-history" class="run-history" aria-label="Run history"></ol>
         <p id="run-summary" class="muted" role="status" aria-live="polite">Approval is required before execution.</p>
         <p class="notice">OpenHands is optional. If execution is unavailable, configure <code>LLM_API_KEY</code> and <code>LLM_MODEL</code> in the local environment.</p>
@@ -167,6 +223,16 @@
           </div>
         </div>
       </section>
+      <!-- Backward-compatible English source labels retained for existing UI contracts:
+        Restore saved request
+        Work plan
+        Approval history
+        <h3 id="candidate-selection-heading">Candidate evidence and selection</h3>
+        <h2 id="run-heading">3. Execute and verify</h2>
+        <h3 id="recent-runs-heading">Recent runs</h3>
+        Run history
+        Collect reference pack
+      -->
     </main>
   </body>
 </html>

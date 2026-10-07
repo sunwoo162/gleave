@@ -6,18 +6,36 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "OSS Product Builder"
-    data_dir: Path = Path(".oss-builder")
+    app_name: str = "Gleave"
+    data_dir: Path = Path(".gleave")
     workspace_root: Path = Path("workspaces")
     github_token: str | None = None
+    notion_token: str | None = None
+    notion_parent_page_id: str | None = None
+    notion_api_base: str = "https://api.notion.com"
+    notion_api_version: str = "2026-03-11"
+    iseol_bridge_token: str | None = None
     claim_latch_adapter_url: str | None = None
+    claim_latch_auto_start: bool = True
+    claim_latch_adapter_port: int = 4318
+    claimlatch_llm_model: str | None = None
+    claimlatch_llm_api_key: str | None = None
+    claimlatch_llm_base_url: str | None = None
+    tavily_api_key: str | None = None
     claim_latch_policy_version: str = "claimlatch-policy-v1"
     claim_latch_adapter_version: str = "eeee-claimlatch-adapter-v1"
+    claim_latch_profile_version: str = "claimlatch-v0.2.0"
     claim_latch_version: str = "0.3.86"
+    claim_latch_mode: Literal["advisory", "required"] = "advisory"
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None
+    local_model_base_url: str = "http://127.0.0.1:11434/api/chat"
+    local_model: str | None = None
+    local_model_timeout_seconds: float = 120.0
     execution_mode: Literal["demo", "workspace_verify"] = "demo"
+    mobile_bridge_enabled: bool = True
+    mobile_pairing_ttl_seconds: int = 600
     command_timeout_seconds: float = 120.0
     max_command_output_chars: int = 8_000
 
@@ -33,6 +51,20 @@ class Settings(BaseSettings):
     def validate_max_command_output_chars(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("max_command_output_chars must be positive")
+        return value
+
+    @field_validator("mobile_pairing_ttl_seconds")
+    @classmethod
+    def validate_mobile_pairing_ttl(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("mobile_pairing_ttl_seconds must be positive")
+        return value
+
+    @field_validator("local_model_timeout_seconds")
+    @classmethod
+    def validate_local_model_timeout(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("local_model_timeout_seconds must be positive")
         return value
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

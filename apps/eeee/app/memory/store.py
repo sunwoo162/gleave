@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -90,6 +91,64 @@ class MemoryStore:
             _insert_record(connection, record)
             _append_event(connection, record.id, "candidate_created", "system", {})
         return record
+
+    def save_user_preference(
+        self, key: str, value: str, *, scope: dict[str, Any] | None = None
+    ) -> MemoryRecord:
+        """Persist an explicit user preference as the sole active value for its key."""
+
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            raise ValueError("user preference key and value are required")
+        preference_scope = {"preferenceKey": key, **(scope or {})}
+        digest = hashlib.sha256(f"{key}\0{value}".encode("utf-8")).hexdigest()
+        record = MemoryRecord(
+            id=f"user-preference-{digest[:24]}",
+            kind="user_preference",
+            content=value,
+            scope=preference_scope,
+            source_project_id="user",
+            source_artifact_ids=[f"user-preference:{key}"],
+            evidence_ids=[f"user-stated:{key}"],
+            verification_ids=[f"user-stated:{key}"],
+            confidence=1.0,
+            status=MemoryStatus.ACTIVE,
+            created_at=_now(),
+            last_verified_at=_now(),
+            approved_by="user",
+        )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing_rows = connection.execute(
+                "SELECT * FROM memory_records WHERE kind = ? AND status = ?",
+                ("user_preference", MemoryStatus.ACTIVE.value),
+            ).fetchall()
+            old_records = [
+                _record_from_row(row)
+                for row in existing_rows
+                if json.loads(row["scope_json"]).get("preferenceKey") == key
+            ]
+            if any(old.content == value for old in old_records):
+                return next(old for old in old_records if old.content == value)
+            _insert_record(connection, record)
+            _append_event(connection, record.id, "candidate_created", "user", {"key": key})
+            _append_event(connection, record.id, "promoted", "user", {"reason": "explicit user preference"})
+            for old in old_records:
+                connection.execute(
+                    "UPDATE memory_records SET status = ?, superseded_by_id = ? WHERE id = ?",
+                    (MemoryStatus.SUPERSEDED.value, record.id, old.id),
+                )
+                _append_event(connection, old.id, "superseded", "user", {"replacementId": record.id})
+        return record
+
+    def search_user_preferences(self) -> dict[str, MemoryRecord]:
+        records = [record for record in self.search("", limit=1000) if record.kind == "user_preference"]
+        return {
+            str(record.scope["preferenceKey"]): record
+            for record in records
+            if isinstance(record.scope.get("preferenceKey"), str)
+        }
 
     def get(self, memory_id: str) -> MemoryRecord:
         with self._connect() as connection:

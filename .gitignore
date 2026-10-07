@@ -10,6 +10,7 @@
 # Generated dependencies and build output
 **/node_modules/
 **/dist/
+build/
 **/.venv/
 **/.pytest_cache/
 **/__pycache__/

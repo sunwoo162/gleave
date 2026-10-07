@@ -50,6 +50,18 @@ def test_candidate_survives_store_reopen(memory_store: tuple[MemoryStore, Path])
     assert loaded.source_project_id == "project-1"
 
 
+def test_user_preference_is_persistent_and_latest_value_replaces_previous(memory_store):
+    store, _path = memory_store
+
+    first = store.save_user_preference("language", "한국어")
+    second = store.save_user_preference("language", "English")
+
+    assert first.status is MemoryStatus.ACTIVE
+    assert second.status is MemoryStatus.ACTIVE
+    assert store.get(first.id).status is MemoryStatus.SUPERSEDED
+    assert store.search_user_preferences()["language"].content == "English"
+
+
 def test_candidate_requires_evidence_to_become_active(memory_store: tuple[MemoryStore, Path]) -> None:
     store, _ = memory_store
     saved = store.save_candidate(_candidate())

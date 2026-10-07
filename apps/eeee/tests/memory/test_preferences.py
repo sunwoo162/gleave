@@ -1,0 +1,17 @@
+from app.memory.preferences import extract_preference
+
+
+def test_extracts_explicit_language_preference():
+    preference = extract_preference("앞으로 한국어로 답해줘")
+    assert preference is not None
+    assert (preference.key, preference.value) == ("language", "한국어")
+
+
+def test_extracts_general_preference_without_guessing_when_not_explicit():
+    assert extract_preference("오늘 한국어로 답해줘") is None
+
+
+def test_keeps_unknown_explicit_preference_as_stable_note():
+    first = extract_preference("기억해줘 포트폴리오 수준으로 완성해")
+    second = extract_preference("기억해줘 포트폴리오 수준으로 완성해")
+    assert first == second

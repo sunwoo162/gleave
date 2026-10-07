@@ -1,4 +1,4 @@
-# OSS Product Builder Release Checklist
+# Gleave Release Checklist
 
 This project uses manual, maintainer-controlled releases. A pull request or
 ordinary push must never publish to PyPI or create a public release.
@@ -18,7 +18,7 @@ docker compose config
 ```
 
 Confirm that the version in `pyproject.toml`, `CHANGELOG.md`, and the tag
-match. Inspect the wheel and source archive for `.env`, `.oss-builder`,
+match. Inspect the wheel and source archive for `.env`, `.gleave`,
 `workspaces`, and test caches. Confirm Docker runs as `ossbuilder` and uses
 demo mode by default.
 
