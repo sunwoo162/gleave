@@ -39,6 +39,7 @@ def test_provisioning_creates_one_profile_and_truthful_connector_plans(tmp_path)
     )
 
     assert Path(result.profile.workspace).is_dir()
+    assert result.profile.runtime_profile == "web_app"
     assert result.profile.capabilities == ["project-execution"]
     assert {item.connector_id for item in result.profile.connectors} == {
         "notion",
@@ -94,4 +95,22 @@ def test_todo_request_provisions_an_actual_fsd_project(tmp_path) -> None:
 
     assert (tmp_path / "todo-workspace" / "index.html").is_file()
     assert (tmp_path / "todo-workspace" / "src" / "entities" / "todo" / "model.js").is_file()
+
+
+def test_web_request_provisions_a_full_stack_project_boundary(tmp_path) -> None:
+    store = SQLiteStore(tmp_path / "state.sqlite3")
+    store.init()
+    provisioner = ProjectProvisioner(store)
+
+    provisioner.provision(
+        project(tmp_path / "web-workspace"),
+        request(),
+        memory_ids=[],
+        qa_baseline_ids=[],
+    )
+
+    root = tmp_path / "web-workspace"
+    assert (root / "apps" / "web" / "index.html").is_file()
+    assert (root / "apps" / "api" / "server.py").is_file()
+    assert (root / ".env.example").is_file()
 

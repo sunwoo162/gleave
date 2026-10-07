@@ -12,6 +12,7 @@ class RequestBrief(BaseModel):
     needs_confirmation: bool = False
     uncertainties: list[str] = Field(default_factory=list)
     canonical_intent: str = "project.unknown"
+    runtime_profile: str = "static_app"
 
 
 class RepositorySnapshot(BaseModel):

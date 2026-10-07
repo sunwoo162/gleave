@@ -46,6 +46,28 @@ def test_equivalent_todo_requests_have_one_canonical_intent(text):
     assert brief.canonical_intent == "project.create.todo_app"
 
 
+def test_login_todo_web_request_selects_web_runtime_profile():
+    brief = parse_request("로그인 기능이 있는 Todo 웹앱 만들어줘")
+
+    assert brief.target_type == "web_app"
+    assert brief.runtime_profile == "web_app"
+    assert brief.canonical_intent == "project.create.web_app"
+
+
+def test_plain_todo_web_request_selects_web_runtime_profile():
+    brief = parse_request("Todo 웹 만들어줘")
+
+    assert brief.target_type == "web_app"
+    assert brief.runtime_profile == "web_app"
+
+
+def test_local_todo_request_keeps_static_runtime_profile():
+    brief = parse_request("Todo 앱 만들어줘")
+
+    assert brief.target_type == "todo_app"
+    assert brief.runtime_profile == "static_app"
+
+
 def test_parse_request_keeps_explicit_constraints_and_marks_missing_platform_uncertain():
     text = "  Build a web app for notes using Python; must work offline  "
     brief = parse_request(text)

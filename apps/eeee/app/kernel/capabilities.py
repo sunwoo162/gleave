@@ -208,12 +208,36 @@ class ProjectExecutionCapability:
                         ExecutionError(code="agent_graph_blocked", message="Agent graph handoff was blocked"),
                     )
             todo_run = None
+            web_run = None
             memory_records = []
             # Keep the original user utterance in the product-type decision.
             # The parsed goal is intentionally normalized and can vary by
             # locale/parser implementation; a direct request such as
             # "Todo 앱 만들어줘" must never skip the verified Todo runner.
-            if is_todo_request(text, [brief.goal, brief.target_type, *brief.acceptance_criteria]):
+            if brief.runtime_profile == "web_app":
+                prepared = self.provisioner.web_runner.prepare(
+                    project_id=project.id,
+                    project_revision=project.revision,
+                    workspace=project.workspace,
+                )
+                trust = (
+                    self.coordinator.trust_pipeline.release_gate(_child, prepared.qa_report)
+                    if self.coordinator.trust_pipeline is not None
+                    else None
+                )
+                claim_latch = {
+                    "decision": trust.decision if trust is not None else "BLOCKED",
+                    "receiptId": trust.claim_latch_receipt_id if trust is not None else None,
+                    "claimLatchReportId": trust.claim_latch_report_id if trust is not None else None,
+                }
+                web_run = self.provisioner.web_runner.finalize(
+                    project_id=project.id,
+                    project_revision=project.revision,
+                    workspace=project.workspace,
+                    prepared=prepared,
+                    claim_latch=claim_latch,
+                )
+            elif is_todo_request(text, [brief.goal, brief.target_type, *brief.acceptance_criteria]):
                 prepared = self.provisioner.todo_runner.prepare(
                     project_id=project.id,
                     project_revision=project.revision,
@@ -309,12 +333,12 @@ class ProjectExecutionCapability:
                 if agent_execution_report is not None else None,
                 "planningSessionId": planning_handoff.planning_session_id,
                 "planningHandoffId": planning_handoff.handoff_id,
-                "qaReportPath": todo_run.qa_report_path if todo_run is not None else None,
-                "releaseManifestPath": todo_run.release_manifest_path if todo_run is not None else None,
-                "gitBranch": todo_run.git_branch if todo_run is not None else None,
-                "gitCommit": todo_run.git_commit if todo_run is not None else None,
-                "qualityStatus": todo_run.status if todo_run is not None else None,
-                "qualityReason": todo_run.reason if todo_run is not None else None,
+                "qaReportPath": (web_run.qa_report_path if web_run is not None else todo_run.qa_report_path if todo_run is not None else None),
+                "releaseManifestPath": (web_run.release_manifest_path if web_run is not None else todo_run.release_manifest_path if todo_run is not None else None),
+                "gitBranch": (web_run.git_branch if web_run is not None else todo_run.git_branch if todo_run is not None else None),
+                "gitCommit": (web_run.git_commit if web_run is not None else todo_run.git_commit if todo_run is not None else None),
+                "qualityStatus": (web_run.status if web_run is not None else todo_run.status if todo_run is not None else None),
+                "qualityReason": (web_run.reason if web_run is not None else todo_run.reason if todo_run is not None else None),
                 "memoryCandidateIds": [record.id for record in memory_records],
             }, ExecutionStatus.COMPLETED)
 
