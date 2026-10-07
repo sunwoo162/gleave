@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
@@ -12,6 +13,7 @@ from app.assistant.models import AssistantContext, AssistantRequest, CapabilityD
 from app.config import Settings
 from app.contracts import ExecutionEnvelope, ExecutionError, ExecutionStatus, SideEffectLevel
 from app.coordinator.service import Coordinator
+from app.integrations.contracts import ProjectOutcomeReportV1
 from app.project_runtime.provisioner import ProjectProvisioner, is_todo_request
 from app.runtime.store import StaleProjectRevision
 from app.storage.sqlite import SQLiteStore
@@ -127,6 +129,7 @@ class ProjectExecutionCapability:
                 request_id=state.request_id,
             )
             todo_run = None
+            memory_records = []
             if is_todo_request(brief.goal, [brief.target_type, *brief.acceptance_criteria]):
                 prepared = self.provisioner.todo_runner.prepare(
                     project_id=project.id,
@@ -150,6 +153,41 @@ class ProjectExecutionCapability:
                     prepared=prepared,
                     claim_latch=claim_latch,
                 )
+                if todo_run.status == "PASS" and trust is not None and trust.decision == "PASS":
+                    outcome = ProjectOutcomeReportV1.model_validate({
+                        "schemaVersion": 1,
+                        "projectId": project.id,
+                        "requestId": state.request_id,
+                        "projectRevision": project.revision,
+                        "status": "completed",
+                        "artifacts": prepared.artifacts,
+                        "agentTeams": [{"agent": "ISEOL", "role": "orchestrator"}],
+                        "handoffs": [],
+                        "deterministicVerification": {
+                            "status": "PASS",
+                            "runner": "EEEE.TodoProjectRunner",
+                            "evidenceIds": prepared.qa_report["evidenceIds"],
+                        },
+                        "qaReport": prepared.qa_report,
+                        "claimLatchReports": [{
+                            "id": trust.claim_latch_report_id,
+                            "claimLatchReportId": trust.claim_latch_report_id,
+                            "projectId": project.id,
+                            "projectRevision": project.revision,
+                            "decision": "PASS",
+                        }],
+                        "receipts": [{"receiptId": trust.claim_latch_receipt_id}],
+                        "risks": [],
+                        "memoryCandidates": [{
+                            "candidateId": f"memory-{project.id}-todo-pattern",
+                            "kind": "success_pattern",
+                            "content": "Todo 프로젝트는 FSD 계층과 독립 QA를 함께 생성하고, ClaimLatch PASS 이후에만 릴리스한다.",
+                            "scope": {"projectType": "todo", "qualityGate": "claimlatch-v0.2.0"},
+                            "confidence": 0.9,
+                        }],
+                        "createdAt": datetime.now(timezone.utc),
+                    })
+                    memory_records = self.coordinator.record_project_outcome(outcome)
             document_execution_id = None
             if self.document_service is not None:
                 def sync_document(_document: ExecutionEnvelope) -> CapabilityOutcome:
@@ -184,6 +222,7 @@ class ProjectExecutionCapability:
                 "releaseManifestPath": todo_run.release_manifest_path if todo_run is not None else None,
                 "qualityStatus": todo_run.status if todo_run is not None else None,
                 "qualityReason": todo_run.reason if todo_run is not None else None,
+                "memoryCandidateIds": [record.id for record in memory_records],
             }, ExecutionStatus.COMPLETED)
 
         try:
