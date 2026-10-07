@@ -101,6 +101,7 @@ class ClaimLatchProcessManager:
             # adapter child listening on the fixed port between app restarts.
             pid = int(process.pid)
             os.system(f"taskkill /PID {pid} /T /F >NUL 2>&1")
+            self._wait_until_unavailable()
         if process.poll() is not None:
             return
         process.terminate()
@@ -109,6 +110,16 @@ class ClaimLatchProcessManager:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=3)
+
+    def _wait_until_unavailable(self, timeout: float = 2.0) -> None:
+        """Wait for the child listener to release the fixed local port."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", self.port), timeout=0.05):
+                    time.sleep(0.05)
+            except OSError:
+                return
 
     @property
     def url(self) -> str:
