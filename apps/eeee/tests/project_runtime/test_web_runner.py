@@ -31,6 +31,9 @@ def test_web_runner_executes_demo_login_and_authorized_todo_crud(tmp_path):
 
     try:
         assert _request(runtime.url + "/api/health")[1]["status"] == "ok"
+        page_request = urllib.request.urlopen(runtime.url + "/", timeout=5)
+        assert page_request.status == 200
+        assert b"Gleave Web App" in page_request.read()
         assert _request(runtime.url + "/api/session")[0] == 401
         assert _request(runtime.url + "/api/todos")[0] == 401
         assert _request(runtime.url + "/api/session", "POST", {"mode": "demo"})[0] == 200

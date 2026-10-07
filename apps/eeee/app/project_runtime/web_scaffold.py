@@ -134,7 +134,7 @@ from pathlib import Path
 from store import TodoStore
 
 ROOT = Path(__file__).resolve().parents[2]
-WEB_ROOT = ROOT / 'web'
+WEB_ROOT = ROOT / 'apps' / 'web'
 store = TodoStore(Path(os.getenv('DATABASE_PATH', ROOT / 'data' / 'app.sqlite3')))
 session = None
 
