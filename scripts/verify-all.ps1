@@ -16,6 +16,14 @@ if (-not (Test-Path -LiteralPath $python)) {
 New-Item -ItemType Directory -Force -Path (Join-Path $root "var") | Out-Null
 $pytestBase = Join-Path $root ("var\pytest-" + [guid]::NewGuid().ToString("N"))
 
+Push-Location $iseol
+try {
+    npm run build --silent
+    if ($LASTEXITCODE -ne 0) { throw "ISEOL build failed before EEEE verification." }
+} finally {
+    Pop-Location
+}
+
 & (Join-Path $root "scripts\check-repository.ps1")
 
 Push-Location $eeee
@@ -42,7 +50,6 @@ try {
 
 Push-Location $iseol
 try {
-    npm run build --silent
     node --import tsx --test `
         tests/integrations/contracts.test.ts `
         tests/qa/independent-runner.test.ts `
