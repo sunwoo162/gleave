@@ -79,7 +79,7 @@ def build_default_registry() -> CapabilityRegistry:
             "project-execution",
             "Project Execution",
             ["project", "development", "build"],
-            ["프로젝트", "앱", "서비스", "기능", "개발", "만들어", "구현", "project", "app", "build", "develop"],
+            ["프로젝트", "앱", "서비스", "기능", "개발", "만들어", "구현", "todo", "할 일", "체크리스트", "project", "app", "build", "develop"],
             side_effect_level="local",
             memory_writable=True,
         ),

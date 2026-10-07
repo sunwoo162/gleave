@@ -50,7 +50,10 @@ class IseolPlanBridge:
             user_goal=request.goal,
             scope=[request.target_type, *request.acceptance_criteria],
             constraints=list(request.constraints),
-            preferences={"verifiedMemories": list(memory_context or [])},
+            preferences={
+                "canonicalIntent": request.canonical_intent,
+                "verifiedMemories": list(memory_context or []),
+            },
             schedule={},
             retrieved_memory_ids=list(memory_ids),
             qa_baseline_ids=list(qa_baseline_ids),
@@ -81,7 +84,10 @@ class IseolPlanBridge:
         # planner returns only a coarse task list. The executor and UI use this
         # graph as the durable handoff contract.
         graph = AgentTeamFactory.default_graph(request.goal).model_copy(update={
-            "context": {"verifiedMemories": list(memory_context or [])},
+            "context": {
+                "canonicalIntent": request.canonical_intent,
+                "verifiedMemories": list(memory_context or []),
+            },
         })
         value["agentGraph"] = graph.model_dump(
             mode="json", by_alias=True

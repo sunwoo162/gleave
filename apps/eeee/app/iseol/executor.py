@@ -176,6 +176,7 @@ class AgentGraphExecutor:
             f"{node.system_prompt}\n"
             f"You are ISEOL agent role={node.role} agentId={node.id} taskId={node.task_id}.\n"
             f"Goal: {node.goal}\n"
+            "The canonical intent is authoritative for equivalent user wording; do not reinterpret it.\n"
             f"Acceptance criteria: {node.acceptance_criteria}\n"
             f"Verified dependency handoffs:\n{dependency_context}\n"
             f"Verified EEEE memory context:\n{json.dumps(shared_context, ensure_ascii=False, sort_keys=True)}\n"

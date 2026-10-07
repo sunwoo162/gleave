@@ -34,6 +34,18 @@ def test_parse_request_classifies_known_targets_without_inventing_constraints(te
         assert brief.uncertainties
 
 
+@pytest.mark.parametrize("text", [
+    "Todo 앱 만들어줘",
+    "할 일 앱 제작해줘",
+    "체크리스트 앱 구현해줘",
+])
+def test_equivalent_todo_requests_have_one_canonical_intent(text):
+    brief = parse_request(text)
+
+    assert brief.target_type == "todo_app"
+    assert brief.canonical_intent == "project.create.todo_app"
+
+
 def test_parse_request_keeps_explicit_constraints_and_marks_missing_platform_uncertain():
     text = "  Build a web app for notes using Python; must work offline  "
     brief = parse_request(text)

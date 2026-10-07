@@ -110,7 +110,12 @@ class PlanningService:
         now = _now()
         target = request.target_type if request.target_type != "unknown" else "local desktop project"
         contents: dict[str, dict[str, object]] = {
-            "project-brief": {"goal": request.goal, "target": target, "constraints": request.constraints},
+            "project-brief": {
+                "goal": request.goal,
+                "target": target,
+                "canonicalIntent": request.canonical_intent,
+                "constraints": request.constraints,
+            },
             "requirements": {"items": [request.goal, *request.acceptance_criteria]},
             "user-scenarios": {"items": [{"actor": "user", "goal": request.goal, "outcome": "verified project result"}]},
             "ux-flow": {"items": [{"step": 1, "title": "Open project"},
