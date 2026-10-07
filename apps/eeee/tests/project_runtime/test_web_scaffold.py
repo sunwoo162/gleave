@@ -15,6 +15,7 @@ def test_web_app_scaffold_contains_full_stack_and_deployment_contract(tmp_path):
         "packages/auth/README.md",
         "packages/db/README.md",
         "docker-compose.yml",
+        "Dockerfile",
         ".env.example",
         "DEPLOYMENT.md",
         ".gitignore",
@@ -22,6 +23,18 @@ def test_web_app_scaffold_contains_full_stack_and_deployment_contract(tmp_path):
     assert all((root / path).is_file() for path in expected)
     assert len(created) >= len(expected)
     assert "Todo Web" in (root / "DEPLOYMENT.md").read_text(encoding="utf-8")
+
+
+def test_web_app_scaffold_docker_compose_has_a_real_build_boundary(tmp_path):
+    root = tmp_path / "web-project"
+    create_web_app_scaffold(root, "Todo Web")
+
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "FROM python:" in dockerfile
+    assert "apps/api/server.py" in dockerfile
+    assert "build: ." in compose
 
 
 def test_web_app_scaffold_is_local_first_and_truthful_about_production_auth(tmp_path):

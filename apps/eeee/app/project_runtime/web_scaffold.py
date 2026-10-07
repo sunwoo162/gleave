@@ -45,6 +45,14 @@ data/
 __pycache__/
 *.py[cod]
 """,
+        "Dockerfile": """FROM python:3.12-slim
+
+WORKDIR /app
+COPY . .
+EXPOSE 8787
+ENV API_HOST=0.0.0.0 API_PORT=8787 AUTH_MODE=demo
+CMD ["python", "apps/api/server.py"]
+""",
         "docker-compose.yml": """services:
   app:
     build: .
