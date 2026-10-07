@@ -11,10 +11,13 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from app.assistant.models import AssistantContext, AssistantRequest, CapabilityDescriptor, CapabilityPlan
+from app.agent.protocol import AgentRuntime
 from app.config import Settings
 from app.contracts import ExecutionEnvelope, ExecutionError, ExecutionStatus, SideEffectLevel
 from app.coordinator.service import Coordinator
 from app.integrations.contracts import ProjectOutcomeReportV1
+from app.iseol.agents import AgentGraph
+from app.iseol.executor import AgentGraphExecutor
 from app.project_runtime.provisioner import ProjectProvisioner, is_todo_request
 from app.planning.service import PlanningService
 from app.runtime.store import StaleProjectRevision
@@ -75,6 +78,7 @@ class ProjectExecutionCapability:
         self, descriptor: CapabilityDescriptor, *, coordinator: Coordinator,
         store: SQLiteStore, settings: Settings, provisioner: ProjectProvisioner,
         document_service: Any | None = None, planning_service: PlanningService | None = None,
+        agent_runtime: AgentRuntime | None = None,
     ) -> None:
         self.descriptor = descriptor
         self.coordinator = coordinator
@@ -83,6 +87,7 @@ class ProjectExecutionCapability:
         self.provisioner = provisioner
         self.document_service = document_service
         self.planning_service = planning_service or PlanningService(store)
+        self.agent_runtime = agent_runtime
 
     def plan(self, request: AssistantRequest, context: AssistantContext) -> CapabilityPlan:
         project_id = f"project-{uuid4().hex}"
@@ -142,6 +147,26 @@ class ProjectExecutionCapability:
                 planning_handoff=planning_handoff,
             )
             agent_graph = _read_agent_graph(provisioned.execution_plan_path)
+            agent_execution_report = None
+            if self.agent_runtime is not None and agent_graph.get("agents"):
+                agent_execution_report = AgentGraphExecutor(
+                    runtime=self.agent_runtime,
+                    trust_pipeline=self.coordinator.trust_pipeline,
+                    workspace=Path(project.workspace),
+                ).execute(AgentGraph.model_validate(agent_graph), _child)
+                if agent_execution_report.status != "completed":
+                    return CapabilityOutcome(
+                        {
+                            "status": "blocked",
+                            "message": "ISEOL specialist agent graph did not pass all handoff gates",
+                            "projectId": project.id,
+                            "projectRevision": project.revision,
+                            "agentGraph": agent_graph,
+                            "agentExecutionReport": agent_execution_report.model_dump(mode="json", by_alias=True),
+                        },
+                        ExecutionStatus.BLOCKED,
+                        ExecutionError(code="agent_graph_blocked", message="Agent graph handoff was blocked"),
+                    )
             todo_run = None
             memory_records = []
             if is_todo_request(brief.goal, [brief.target_type, *brief.acceptance_criteria]):
@@ -236,6 +261,8 @@ class ProjectExecutionCapability:
                 "missingConnectors": missing, "documentExecutionId": document_execution_id,
                 "executionPlanPath": provisioned.execution_plan_path,
                 "agentGraph": agent_graph,
+                "agentExecutionReport": agent_execution_report.model_dump(mode="json", by_alias=True)
+                if agent_execution_report is not None else None,
                 "planningSessionId": planning_handoff.planning_session_id,
                 "planningHandoffId": planning_handoff.handoff_id,
                 "qaReportPath": todo_run.qa_report_path if todo_run is not None else None,

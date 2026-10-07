@@ -188,6 +188,7 @@ def create_app(
         settings=app_settings, provisioner=project_provisioner, memory=coordinator.memory,
         trust_gate=trust_gate, event_bus=event_bus, event_publisher=mobile_bridge.publish,
         document_service=project_documents, planning_service=planning_service,
+        agent_runtime=runtime if app_settings.llm_api_key else None,
     )
     application.state.kernel = kernel
     application.state.execution_store = kernel.executions

@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.assistant.models import AssistantContext, AssistantRequest, CapabilitySelection
+from app.agent.protocol import AgentRuntime
 from app.assistant.router import CapabilityRouter
 from app.config import Settings
 from app.contracts import ApprovalState, EventEnvelope, ExecutionEnvelope, ExecutionError, ExecutionStatus, LocalEventBus, SideEffectLevel
@@ -27,6 +28,7 @@ class KernelService:
         trust_gate: TrustGate | None = None, event_bus: LocalEventBus | None = None,
         event_publisher: Callable[[str, dict[str, object]], object] | None = None,
         document_service: Any | None = None, planning_service: PlanningService | None = None,
+        agent_runtime: AgentRuntime | None = None,
     ) -> None:
         self.router = router
         self.coordinator = coordinator
@@ -48,6 +50,7 @@ class KernelService:
                     descriptor, coordinator=coordinator, store=store, settings=settings,
                     provisioner=provisioner, document_service=document_service,
                     planning_service=planning_service,
+                    agent_runtime=agent_runtime,
                 )
             elif descriptor.id in {"personal-secretary", "knowledge-documents", "presence"}:
                 handler = LocalPlanningCapability(descriptor)
