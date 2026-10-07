@@ -154,6 +154,17 @@ class Coordinator:
             for memory in memories
             if memory.kind in {"qa_rule", "regression_rule"}
         ]
+        verified_memories = [
+            {
+                "id": memory.id,
+                "kind": memory.kind,
+                "content": memory.content,
+                "scope": memory.scope,
+                "confidence": memory.confidence,
+                "verificationIds": memory.verification_ids,
+            }
+            for memory in memories
+        ]
         return ProjectBriefV1(
             schema_version=1,
             project_id=project.id,
@@ -161,7 +172,7 @@ class Coordinator:
             user_goal=request.goal,
             scope=[request.target_type, *request.acceptance_criteria],
             constraints=request.constraints,
-            preferences={},
+            preferences={"verifiedMemories": verified_memories},
             schedule={},
             retrieved_memory_ids=memory_ids,
             qa_baseline_ids=qa_baseline_ids,

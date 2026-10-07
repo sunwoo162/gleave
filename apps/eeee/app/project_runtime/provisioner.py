@@ -36,6 +36,7 @@ class ProjectProvisioner:
         *,
         memory_ids: list[str],
         qa_baseline_ids: list[str],
+        memory_context: list[dict[str, object]] | None = None,
         request_id: str | None = None,
         planning_handoff: PlanningHandoff | None = None,
     ) -> ProjectProvisioningResult:
@@ -44,7 +45,7 @@ class ProjectProvisioner:
             if _is_todo_request(existing.goal, existing.scope):
                 create_todo_scaffold(project.workspace)
             execution_plan_path = self._write_execution_plan(
-                project, request, memory_ids, qa_baseline_ids, request_id, planning_handoff,
+                project, request, memory_ids, qa_baseline_ids, memory_context, request_id, planning_handoff,
             )
             return _result(existing, execution_plan_path=execution_plan_path)
 
@@ -76,7 +77,7 @@ class ProjectProvisioner:
         self.store.save_project_profile(profile)
         execution_plan_path = None
         execution_plan_path = self._write_execution_plan(
-            project, request, memory_ids, qa_baseline_ids, request_id, planning_handoff,
+            project, request, memory_ids, qa_baseline_ids, memory_context, request_id, planning_handoff,
         )
         return _result(profile, execution_plan_path=execution_plan_path)
 
@@ -86,6 +87,7 @@ class ProjectProvisioner:
         request: RequestBrief,
         memory_ids: list[str],
         qa_baseline_ids: list[str],
+        memory_context: list[dict[str, object]] | None,
         request_id: str | None,
         planning_handoff: PlanningHandoff | None,
     ) -> str | None:
@@ -98,6 +100,7 @@ class ProjectProvisioner:
             request=request,
             memory_ids=memory_ids,
             qa_baseline_ids=qa_baseline_ids,
+            memory_context=memory_context,
             planning_handoff=planning_handoff,
         )
         plan_path = Path(project.workspace) / "execution-plan.json"

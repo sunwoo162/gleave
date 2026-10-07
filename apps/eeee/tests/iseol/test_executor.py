@@ -10,11 +10,13 @@ from app.trust.pipeline import TrustPipelineDecision
 class RecordingRuntime:
     def __init__(self, *, fail_agent: str | None = None):
         self.calls: list[str] = []
+        self.prompts: list[str] = []
         self.fail_agent = fail_agent
 
     def run(self, request):
         agent_id = request.prompt.split("agentId=")[1].split()[0]
         self.calls.append(agent_id)
+        self.prompts.append(request.prompt)
         if agent_id == self.fail_agent and self.calls.count(agent_id) == 1:
             return AgentResult("failed", f"{agent_id} failed", [], [], [], "failed")
         return AgentResult(
@@ -60,6 +62,19 @@ def test_executor_runs_only_ready_nodes_and_verifies_every_handoff(tmp_path):
     assert set(runtime.calls) == {"requirements", "design", "frontend", "backend", "data", "test", "review", "integration"}
     assert set(trust.calls) == set(runtime.calls)
     assert all(item.status == "passed" for item in report.agents)
+
+
+def test_executor_includes_verified_memory_context_in_agent_prompt(tmp_path):
+    runtime = RecordingRuntime()
+    trust = PassingTrust()
+    graph = AgentTeamFactory.default_graph("Todo 앱").model_copy(update={
+        "context": {"verifiedMemories": [{"id": "memory-1", "content": "Use FSD boundaries."}]}
+    })
+    executor = AgentGraphExecutor(runtime=runtime, trust_pipeline=trust, workspace=Path(tmp_path))
+
+    executor.execute(graph, _envelope())
+
+    assert any("Use FSD boundaries." in prompt for prompt in runtime.prompts)
 
 
 def test_executor_blocks_dependents_after_failed_or_untrusted_handoff(tmp_path):

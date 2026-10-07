@@ -40,6 +40,7 @@ class IseolPlanBridge:
         request: RequestBrief,
         memory_ids: list[str],
         qa_baseline_ids: list[str],
+        memory_context: list[dict[str, Any]] | None = None,
         planning_handoff: PlanningHandoff | None = None,
     ) -> dict[str, Any]:
         brief = ProjectBriefV1(
@@ -49,7 +50,7 @@ class IseolPlanBridge:
             user_goal=request.goal,
             scope=[request.target_type, *request.acceptance_criteria],
             constraints=list(request.constraints),
-            preferences={},
+            preferences={"verifiedMemories": list(memory_context or [])},
             schedule={},
             retrieved_memory_ids=list(memory_ids),
             qa_baseline_ids=list(qa_baseline_ids),
@@ -58,7 +59,10 @@ class IseolPlanBridge:
         payload = {
             "brief": brief.model_dump(mode="json", by_alias=True),
             "projectRevision": project_revision,
-            "qualityMemory": [{"id": item, "kind": "qa_rule", "status": "active", "content": item, "scope": {}} for item in memory_ids],
+            "qualityMemory": list(memory_context or [
+                {"id": item, "kind": "qa_rule", "status": "active", "content": item, "scope": {}}
+                for item in memory_ids
+            ]),
         }
         if planning_handoff is not None:
             if planning_handoff.project_id != project_id or planning_handoff.project_revision != project_revision:
@@ -76,7 +80,10 @@ class IseolPlanBridge:
         # Keep the specialist organization explicit even when an external
         # planner returns only a coarse task list. The executor and UI use this
         # graph as the durable handoff contract.
-        value["agentGraph"] = AgentTeamFactory.default_graph(request.goal).model_dump(
+        graph = AgentTeamFactory.default_graph(request.goal).model_copy(update={
+            "context": {"verifiedMemories": list(memory_context or [])},
+        })
+        value["agentGraph"] = graph.model_dump(
             mode="json", by_alias=True
         )
         return value

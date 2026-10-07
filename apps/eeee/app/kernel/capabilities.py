@@ -143,6 +143,7 @@ class ProjectExecutionCapability:
                 qa_baseline_ids=list(dict.fromkeys([
                     *project_brief.qa_baseline_ids, *envelope_context.assistant_context.qa_baseline_ids,
                 ])),
+                memory_context=list(project_brief.preferences.get("verifiedMemories", [])),
                 request_id=state.request_id,
                 planning_handoff=planning_handoff,
             )

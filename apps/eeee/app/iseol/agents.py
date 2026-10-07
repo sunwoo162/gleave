@@ -40,6 +40,7 @@ class AgentGraph(BaseModel):
     schema_version: Literal["iseol-agent-graph.v1"] = Field(alias="schemaVersion")
     goal: str = Field(min_length=1)
     agents: list[AgentNode] = Field(min_length=1)
+    context: dict[str, object] = Field(default_factory=dict)
 
     @property
     def task_ids(self) -> list[str]:

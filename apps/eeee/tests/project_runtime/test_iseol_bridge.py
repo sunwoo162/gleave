@@ -29,6 +29,11 @@ def test_bridge_sends_versioned_project_brief_and_returns_iseol_plan() -> None:
         request=request(),
         memory_ids=["memory-1"],
         qa_baseline_ids=["qa-1"],
+        memory_context=[{
+            "id": "memory-1", "kind": "qa_rule",
+            "content": "Use responsive viewport checks.", "scope": {"feature": "responsive"},
+            "verificationIds": ["claimlatch-1"],
+        }],
     )
 
     assert plan["tasks"] == [{"id": "task-1"}]
@@ -36,7 +41,8 @@ def test_bridge_sends_versioned_project_brief_and_returns_iseol_plan() -> None:
     payload = json.loads(calls[0][1])
     assert payload["brief"]["schemaVersion"] == 1
     assert payload["brief"]["projectId"] == "project-1"
-    assert payload["qualityMemory"][0]["id"] == "memory-1"
+    assert payload["qualityMemory"][0]["content"] == "Use responsive viewport checks."
+    assert plan["agentGraph"]["context"]["verifiedMemories"][0]["id"] == "memory-1"
 
 
 def test_bridge_rejects_invalid_iseol_output() -> None:

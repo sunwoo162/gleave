@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import json
 from typing import Literal
 from collections.abc import Callable
 
@@ -125,7 +126,7 @@ class AgentGraphExecutor:
             batch = ready[: self.max_parallelism]
             with ThreadPoolExecutor(max_workers=len(batch), thread_name_prefix="iseol-agent") as pool:
                 futures = {
-                    node.id: pool.submit(self._run_node, node, envelope, handoffs)
+                    node.id: pool.submit(self._run_node, node, envelope, handoffs, graph.context)
                     for node in batch
                 }
                 for node in batch:
@@ -141,6 +142,7 @@ class AgentGraphExecutor:
                             break
                         record = self._run_node(
                             node, envelope, handoffs,
+                            graph.context,
                             reflection=reflection.instruction,
                             attempt=attempts[node.id] + 1,
                         ).model_copy(update={"reflection": reflection.instruction})
@@ -163,7 +165,7 @@ class AgentGraphExecutor:
         )
 
     def _run_node(self, node: AgentNode, envelope: ExecutionEnvelope,
-                  handoffs: dict[str, AgentExecutionRecord], *,
+                  handoffs: dict[str, AgentExecutionRecord], shared_context: dict[str, object], *,
                   reflection: str | None = None, attempt: int = 1) -> AgentExecutionRecord:
         started = datetime.now(timezone.utc)
         dependency_context = "\n".join(
@@ -176,6 +178,7 @@ class AgentGraphExecutor:
             f"Goal: {node.goal}\n"
             f"Acceptance criteria: {node.acceptance_criteria}\n"
             f"Verified dependency handoffs:\n{dependency_context}\n"
+            f"Verified EEEE memory context:\n{json.dumps(shared_context, ensure_ascii=False, sort_keys=True)}\n"
             f"Reflector instruction: {reflection or 'none'}\n"
             "Return only work backed by files, commands, tests, and evidence."
         )

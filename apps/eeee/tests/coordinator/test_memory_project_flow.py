@@ -38,3 +38,4 @@ def test_next_project_brief_retrieves_promoted_qa_memory_as_a_baseline(tmp_path)
 
     assert brief.retrieved_memory_ids == ["memory-responsive-qa"]
     assert brief.qa_baseline_ids == ["memory-responsive-qa"]
+    assert brief.preferences["verifiedMemories"][0]["content"].startswith("Always test responsive")
