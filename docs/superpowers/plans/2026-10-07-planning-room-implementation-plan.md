@@ -35,8 +35,8 @@
 - Create: `apps/eeee/app/planning/__init__.py`
 - Create: `apps/eeee/app/planning/models.py`
 - Modify: `apps/eeee/app/storage/sqlite.py`
-- Test: `apps/eeee/tests/planning/test_models.py`
-- Test: `apps/eeee/tests/planning/test_storage.py`
+- Test: `apps/eeee/tests/planning/test_planning_models.py`
+- Test: `apps/eeee/tests/planning/test_planning_storage.py`
 
 **Interfaces:**
 - Produces `PlanningSession`, `PlanningArtifact`, `PlanningDecision`, and `PlanningHandoff` Pydantic models.
@@ -49,7 +49,7 @@
 
 - [ ] **Step 2: Run model tests to verify failure**
 
-  Run: `pytest apps/eeee/tests/planning/test_models.py -v`
+  Run: `pytest apps/eeee/tests/planning/test_planning_models.py -v`
 
   Expected: FAIL because the planning package and contracts do not exist.
 
@@ -63,7 +63,7 @@
 
 - [ ] **Step 5: Run storage tests to verify failure**
 
-  Run: `pytest apps/eeee/tests/planning/test_storage.py -v`
+  Run: `pytest apps/eeee/tests/planning/test_planning_storage.py -v`
 
   Expected: FAIL because the tables and store methods do not exist.
 
@@ -86,7 +86,7 @@
 **Files:**
 - Create: `apps/eeee/app/planning/service.py`
 - Modify: `apps/eeee/app/workflow/planner.py`
-- Test: `apps/eeee/tests/planning/test_service.py`
+- Test: `apps/eeee/tests/planning/test_planning_service.py`
 
 **Interfaces:**
 - `PlanningService.start(project: Project, request: RequestBrief, mode: Literal["deep", "quick"]) -> PlanningSession`
@@ -109,7 +109,7 @@
 
 - [ ] **Step 4: Run service tests to verify failure**
 
-  Run: `pytest apps/eeee/tests/planning/test_service.py -v`
+  Run: `pytest apps/eeee/tests/planning/test_planning_service.py -v`
 
   Expected: FAIL because `PlanningService` is not implemented.
 
@@ -119,13 +119,13 @@
 
 - [ ] **Step 6: Run service tests**
 
-  Run: `pytest apps/eeee/tests/planning/test_service.py -v`
+  Run: `pytest apps/eeee/tests/planning/test_planning_service.py -v`
 
   Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
-  `git add apps/eeee/app/planning apps/eeee/app/workflow/planner.py apps/eeee/tests/planning/test_service.py && git commit -m "feat: implement planning room interview and quick planning"`
+  `git add apps/eeee/app/planning apps/eeee/app/workflow/planner.py apps/eeee/tests/planning/test_planning_service.py && git commit -m "feat: implement planning room interview and quick planning"`
 
 ### Task 3: ISEOL handoff integration and direct-request enforcement
 
