@@ -9,7 +9,7 @@ def test_one_sentence_todo_request_creates_project_and_map(tmp_path):
     with TestClient(create_app(settings)) as client:
         routed = client.post("/api/assistant/route", json={"text": "Todo 앱 만들어줘"})
 
-        assert routed.status_code == 200
+        assert routed.status_code == 200, routed.text
         payload = routed.json()
         assert payload["project_id"]
 

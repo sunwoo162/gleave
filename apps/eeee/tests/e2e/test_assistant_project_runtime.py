@@ -20,7 +20,7 @@ def test_project_request_survives_app_restart_with_truthful_connector_states(tmp
             json={"text": "로컬 우선 웹 프로젝트 하나 만들어줘"},
         )
 
-        assert created.status_code == 200
+        assert created.status_code == 200, created.text
         payload = created.json()
         project_id = payload["project_id"]
         profile = payload["project_profile"]

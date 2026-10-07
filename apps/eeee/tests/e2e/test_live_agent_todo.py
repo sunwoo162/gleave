@@ -57,7 +57,7 @@ def test_user_todo_request_executes_specialist_graph_and_renders_it(tmp_path):
     with TestClient(application) as client:
         response = client.post("/api/assistant/route", json={"text": "Todo 앱 만들어줘"})
 
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
         payload = response.json()
         project_id = payload["project_id"]
         workspace = Path(payload["project_profile"]["workspace"])

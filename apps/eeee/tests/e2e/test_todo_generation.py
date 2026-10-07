@@ -12,7 +12,7 @@ def test_user_can_request_todo_and_receive_a_generated_project(tmp_path) -> None
     with TestClient(create_app(settings)) as client:
         response = client.post("/api/assistant/route", json={"text": "Todo 앱 만들어줘"})
 
-    assert response.status_code == 200
+        assert response.status_code == 200, response.text
     payload = response.json()
     workspace = Path(payload["project_profile"]["workspace"])
     assert payload["selection"]["capability_id"] == "project-execution"
