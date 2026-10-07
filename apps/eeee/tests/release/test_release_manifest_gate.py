@@ -31,7 +31,6 @@ def _input(**overrides):
 
 def test_release_manifest_passes_only_with_current_qa_claimlatch_and_artifacts() -> None:
     manifest = build_release_manifest(**_input())
-
     assert manifest.decision == "PASS"
     assert manifest.project_id == "project-1"
     assert manifest.claim_latch_receipt_id == "receipt-1"
@@ -51,7 +50,6 @@ def test_release_manifest_blocks_stale_or_unverified_results() -> None:
                 }
             )
         )
-
     with pytest.raises(ValueError, match="release blocked"):
         build_release_manifest(**_input(claim_latch={"decision": "WARN", "receiptId": None, "claimLatchReportId": "report-1"}))
 
