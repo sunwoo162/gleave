@@ -4,6 +4,12 @@ from pathlib import Path
 import time
 
 from app.desktop.client import PetApiClient
+from app.desktop.bubble_layout import (
+    bubble_height_for_text,
+    bubble_text_area_height,
+    choose_bubble_width,
+)
+from app.desktop.conversation_state import ConversationState
 from app.desktop.presentation import PetPresentation
 from app.desktop.session import DesktopSession
 from app.desktop.worker import QtTaskRunner
@@ -234,7 +240,12 @@ class PetWindow:
                 the same responsive geometry used by ``heightForWidth``.
                 """
                 left, top, right, bottom = self._base_contents_margins
-                body_height = max(1, round(self.height() * self._TAIL_Y_RATIO))
+                body_height = bubble_text_area_height(
+                    surface_height=self.height(),
+                    tail_y_ratio=self._TAIL_Y_RATIO,
+                    top_padding=top,
+                    bottom_padding=bottom,
+                ) + top + bottom
                 return QRect(
                     left,
                     top,
@@ -260,17 +271,16 @@ class PetWindow:
             def _tail_safe_height(self, width):
                 """Leave the image tail below the text's drawable body."""
                 text_height = self._wrapped_text_height(width)
-                body_height = (
-                    text_height
-                    + self._base_contents_margins[1]
-                    + self._base_contents_margins[3]
+                return bubble_height_for_text(
+                    text_height=text_height,
+                    top_padding=self._base_contents_margins[1],
+                    bottom_padding=self._base_contents_margins[3],
+                    tail_y_ratio=self._TAIL_Y_RATIO,
                     # QTextDocument reports the line box height, while the
                     # rasterized glyphs need a small breathing room at the
-                    # top/bottom of that box. Without it, two-line replies
-                    # can clip even though their measured height fits.
-                    + 4
+                    # top/bottom of that box.
+                    glyph_breathing_room=4,
                 )
-                return int(body_height / self._TAIL_Y_RATIO + 0.9999)
 
             def heightForWidth(self, width):
                 regular_height = super().heightForWidth(width)
@@ -492,6 +502,8 @@ class PetWindow:
                 self._busy = False
                 self._refreshing = False
                 self._conversation_active = False
+                self._conversation_state = ConversationState()
+                self._assistant_message = ""
                 self._auth_login_in_progress = False
                 self._closing = False
                 self._quit_requested = False
@@ -973,12 +985,16 @@ class PetWindow:
                 # composer while waiting for input, or the centered reply
                 # after a request. Keeping both widgets visible was the source
                 # of the stacked greeting/status/input screenshot.
-                latest_reply = self.detail.text().strip() if show_latest_reply else ""
+                latest_reply = self._assistant_message.strip() if show_latest_reply else ""
                 if latest_reply in {
                     self._text("connecting"),
                     self._text("assistant_busy"),
                 }:
                     latest_reply = ""
+                if latest_reply:
+                    self._conversation_state.finish_reply(latest_reply)
+                else:
+                    self._conversation_state.open_input()
                 self.detail.hide()
                 self.reply_surface.hide()
                 self._reply_hide_timer.stop()
@@ -1003,6 +1019,7 @@ class PetWindow:
                 self.reply_surface.hide()
                 self._reply_hide_timer.stop()
                 self.quick_reply.clear()
+                self._conversation_state.open_input()
                 self.show_command_surface(show_latest_reply=False)
 
             def _reposition_command_surface(self):
@@ -1038,7 +1055,9 @@ class PetWindow:
                 self.assistant_input.hide()
                 self.quick_status.hide()
                 self.detail.hide()
-                if self.detail.text().strip():
+                if self._busy or self._typing_timer.isActive():
+                    self.reply_surface.hide()
+                elif self._assistant_message.strip():
                     self.reply_surface.show()
                     self._reposition_reply_surface()
                 self._schedule_reply_hide()
@@ -1066,15 +1085,22 @@ class PetWindow:
                 if not text.strip():
                     return 360
                 line_height = max(1, self.quick_reply.fontMetrics().lineSpacing())
-                for width in _BUBBLE_WIDTH_PRESETS:
+
+                def measure_text_height(content_width):
                     document = QTextDocument()
                     document.setDocumentMargin(0)
                     document.setDefaultFont(self.quick_reply.font())
-                    document.setTextWidth(max(1, width - horizontal_padding))
+                    document.setTextWidth(max(1, content_width))
                     document.setPlainText(text)
-                    if document.size().height() <= line_height * _BUBBLE_COMFORTABLE_LINE_COUNT:
-                        return width
-                return _BUBBLE_WIDTH_PRESETS[-1]
+                    return document.size().height()
+
+                return choose_bubble_width(
+                    measure_text_height,
+                    line_height=line_height,
+                    horizontal_padding=horizontal_padding,
+                    presets=_BUBBLE_WIDTH_PRESETS,
+                    comfortable_lines=_BUBBLE_COMFORTABLE_LINE_COUNT,
+                )
 
             def _pet_anchor_rect(self):
                 """Return the pet artwork bounds in screen coordinates."""
@@ -1181,6 +1207,11 @@ class PetWindow:
 
             def _hide_reply_bubble(self):
                 self._reply_hide_timer.stop()
+                if self._busy or self._typing_timer.isActive():
+                    return
+                if not self._conversation_state.can_expire():
+                    self._schedule_reply_hide()
+                    return
                 self.detail.clear()
                 self.reply_surface.hide()
                 if self.command_surface.isVisible():
@@ -1191,6 +1222,8 @@ class PetWindow:
                 self.assistant_input.clear()
                 self.assistant_input.hide()
                 self._quick_chat_mode = "input"
+                self._assistant_message = ""
+                self._conversation_state.hide()
 
             def _press_source_frame(self, frame: str) -> str:
                 """Return the sibling artwork for a same-paw press frame.
@@ -1313,6 +1346,8 @@ class PetWindow:
                 self._last_text_edit_at = time.monotonic() if text else 0.0
                 if not self._typing_active:
                     self._typing_frame = 0
+                if self.command_surface.isVisible() and not self._busy:
+                    self._conversation_state.update_draft(text)
                 if self.command_surface.isVisible():
                     self._schedule_reply_hide()
                 self._update_pet_motion()
@@ -1452,6 +1487,10 @@ class PetWindow:
                 self._typing_timer.stop()
                 self._typing_text = text
                 self._typing_index = 0
+                if text:
+                    self._conversation_state.begin_typing()
+                else:
+                    self._conversation_state.hide()
                 self.detail.setText("")
                 self.reply_surface.setText("")
                 self.quick_reply.setText("")
@@ -1469,6 +1508,8 @@ class PetWindow:
             def _advance_reply_typing(self) -> None:
                 if self._typing_index >= len(self._typing_text):
                     self._typing_timer.stop()
+                    if self._typing_text:
+                        self._conversation_state.finish_reply(self._typing_text)
                     self._schedule_reply_hide()
                     return
                 self._typing_index += 1
@@ -1484,13 +1525,19 @@ class PetWindow:
                     self._set_quick_chat_mode("reply")
                 if self._typing_index >= len(self._typing_text):
                     self._typing_timer.stop()
+                    self._conversation_state.finish_reply(self._typing_text)
                     self._schedule_reply_hide()
 
             def _schedule_reply_hide(self):
-                # A visible reply or empty composer is temporary UI. Keep the
-                # bubble out of the user's way after five seconds of inactivity
-                # while allowing typing to restart the same countdown.
-                if self.detail.text().strip() or self.command_surface.isVisible():
+                # Never expire a draft, an active request, or a reply that is
+                # still being typed. Only an empty input surface or a fully
+                # rendered reply is temporary UI.
+                if self._busy or self._typing_timer.isActive():
+                    self._reply_hide_timer.stop()
+                    return
+                if self.command_surface.isVisible() and self._quick_chat_mode == "input":
+                    self._conversation_state.update_draft(self.assistant_input.text())
+                if self._conversation_state.can_expire():
                     self._reply_hide_timer.start()
                 else:
                     self._reply_hide_timer.stop()
@@ -1750,6 +1797,8 @@ class PetWindow:
                     self._busy = True
                     self.detail.setText(busy_message)
                     if self.command_surface.isVisible():
+                        self._conversation_state.begin_processing()
+                        self._reply_hide_timer.stop()
                         self._set_quick_chat_mode("reply", busy_message)
                     self._update_controls()
 
@@ -1815,6 +1864,7 @@ class PetWindow:
                 detail = view.detail
                 if view.state == "idle" and not self._conversation_active:
                     detail = ""
+                self._assistant_message = detail
                 self.quick_status.setText(headlines.get(view.state, view.headline))
                 self._reply_hide_timer.stop()
                 if self.command_surface.isVisible():
@@ -1924,6 +1974,8 @@ class PetWindow:
                 if not text:
                     return
                 self._conversation_active = True
+                self._conversation_state.begin_processing()
+                self._reply_hide_timer.stop()
                 self.assistant_input.clear()
 
                 def on_success(payload):
