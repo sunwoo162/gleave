@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.api.service import ApiFlowService
 from app.assistant.models import CapabilitySelection
+from app.capabilities.status import canonical_plugin_status
 from app.assistant.service import AssistantRouteResult, AssistantService
 from app.assistant.background import JobTransitionError
 from app.coordinator.service import Coordinator
@@ -145,6 +146,14 @@ class MemoryDeleteResponse(BaseModel):
     deleted: bool
     memory_id: str = Field(alias="memoryId")
 
+
+class MemoryCreatePayload(BaseModel):
+    content: str = Field(min_length=1)
+    source_message_id: str = Field(alias="sourceMessageId", min_length=1)
+    actor: str = Field(min_length=1)
+    kind: str = "agent_routing_hint"
+    scope: dict[str, object] = Field(default_factory=dict)
+
     model_config = {"populate_by_name": True}
 
 
@@ -152,6 +161,11 @@ class UserPreferencePayload(BaseModel):
     key: str = Field(min_length=1, max_length=120)
     value: str = Field(min_length=1, max_length=2_000)
     scope: dict[str, object] = Field(default_factory=dict)
+
+
+class MemoryEditPayload(BaseModel):
+    content: str = Field(min_length=1)
+    actor: str = Field(min_length=1)
 
 
 class DesignReferencePayload(BaseModel):
@@ -214,6 +228,7 @@ def _plugin_registration_payload(registration: object) -> dict[str, object]:
         "manifestVersion": registration.manifest_version,
         "manifest": registration.manifest,
         "status": registration.status,
+        "capabilityStatus": canonical_plugin_status(registration.status),
         "createdAt": registration.created_at,
         "updatedAt": registration.updated_at,
     }
@@ -1096,6 +1111,22 @@ def build_api_router(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/memory", response_model=MemoryRecord, status_code=201)
+    def create_explicit_memory(payload: MemoryCreatePayload) -> MemoryRecord:
+        return flow.coordinator.memory.save_explicit_memory(
+            payload.content,
+            source_message_id=payload.source_message_id,
+            actor=payload.actor,
+            kind=payload.kind,
+            scope=payload.scope,
+        )
+
+    @router.patch("/memory/{memory_id}", response_model=MemoryRecord)
+    def edit_explicit_memory(memory_id: str, payload: MemoryEditPayload) -> MemoryRecord:
+        return flow.coordinator.memory.edit(
+            memory_id, payload.content, actor=payload.actor
+        )
 
     @router.post("/memory/{memory_id}/promote", response_model=MemoryRecord)
     def promote_memory(
