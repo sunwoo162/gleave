@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 
 class DesktopSession:
     """Keep the Desktop presentation model separate from the Qt window."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: Any, conversation_id: str = "desktop-default") -> None:
         self.client = client
+        self.conversation_id = conversation_id.strip() or "desktop-default"
         self.project_id: str | None = None
         self.assistant_job_id: str | None = None
         self.snapshot: dict[str, object] = {}
@@ -65,14 +67,25 @@ class DesktopSession:
         return self.snapshot
 
     def route(self, text: str, workspace: str | None = None) -> dict[str, object]:
-        result = self.client.route_assistant(text, workspace)
+        result = self._route_assistant(text, workspace)
         job_id = result.get("jobId")
         if isinstance(job_id, str) and job_id:
             self.assistant_job_id = job_id
         selected_project = result.get("project_id")
         if isinstance(selected_project, str) and selected_project:
             self.project_id = selected_project
-        snapshot = self.refresh()
+        try:
+            snapshot = self.refresh()
+        except Exception as exc:
+            # A project/status snapshot is secondary to the assistant route.
+            # A missing profile or transient status failure must not turn a
+            # valid conversation response into a generic error bubble.
+            snapshot = {
+                "state": "working" if isinstance(job_id, str) and job_id else "idle",
+                "message": result.get("message", "EEEE가 응답을 준비했어."),
+                "projectId": selected_project,
+                "statusError": str(exc),
+            }
         snapshot["assistantRoute"] = result
         if not isinstance(job_id, str) or not job_id:
             # A direct EEEE/plugin response has no project snapshot to carry
@@ -94,6 +107,26 @@ class DesktopSession:
             })
         self.snapshot = snapshot
         return snapshot
+
+    def _route_assistant(self, text: str, workspace: str | None) -> dict[str, object]:
+        """Route with durable context while keeping old client adapters usable."""
+        route = self.client.route_assistant
+        try:
+            parameters = inspect.signature(route).parameters.values()
+        except (TypeError, ValueError):
+            parameters = ()
+        supports_conversation = any(
+            parameter.kind is inspect.Parameter.VAR_POSITIONAL
+            or parameter.name == "conversation_id"
+            for parameter in parameters
+        ) or sum(
+            parameter.kind
+            in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            for parameter in parameters
+        ) >= 3
+        if supports_conversation:
+            return route(text, workspace, self.conversation_id)
+        return route(text, workspace)
 
     def issue_pairing_code(self) -> dict[str, object]:
         result = self.client.issue_pairing_code()
